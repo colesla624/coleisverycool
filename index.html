@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <title>Diverse 100-Level Platformer</title>
+  <title>Diverse 100-Level Boss Platformer</title>
   <style>
     body { margin:0; background:#111; }
     canvas { display:block; }
@@ -11,6 +11,7 @@
     .stick-area {
       position:fixed; bottom:16px; left:16px; width:120px; height:120px;
       border-radius:50%; background:rgba(255,255,255,0.08);
+      border:1px solid rgba(255,255,255,0.12);
     }
     .stick-knob {
       position:absolute; left:50%; top:50%; width:40px; height:40px;
@@ -19,7 +20,7 @@
     .btn {
       position:fixed; right:16px; bottom:16px; width:80px; height:80px;
       border-radius:50%; background:#fff; display:flex; align-items:center; justify-content:center;
-      font-weight:bold;
+      font-weight:bold; user-select:none;
     }
     .label {
       position:fixed; top:8px; left:50%; transform:translateX(-50%);
@@ -29,7 +30,7 @@
     #skipBtn {
       position:fixed; top:60px; right:20px;
       background:#fff; border:none; padding:8px 12px; border-radius:6px;
-      font-weight:bold; display:none;
+      font-weight:bold; display:none; cursor:pointer;
     }
   </style>
 </head>
@@ -43,75 +44,20 @@
 <button id="skipBtn">Skip Boss</button>
 
 <script>
-const canvas=document.getElementById("game"),ctx=canvas.getContext("2d");
-canvas.width=window.innerWidth;canvas.height=window.innerHeight;
+const canvas = document.getElementById("game"), ctx = canvas.getContext("2d");
+function resize(){ canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
+resize();
+window.addEventListener('resize', resize);
 
-const TILE=32,W=32,H=16;
-let coinTotal=0,playerColor="#ffd166";
-const player={x:0,y:0,w:24,h:28,vx:0,vy:0,onGround:false,jumps:0};
+const TILE=32, GROUND_Y=15*TILE;
+let coinTotal=0, hasKey=false;
+const player = { x:64, y:GROUND_Y-28, w:24, h:28, vx:0, vy:0, onGround:false, jumps:0, color:"#ffd166" };
 
-const levels=[];
+const keys = {};
+window.addEventListener("keydown", e => keys[e.code] = true);
+window.addEventListener("keyup", e => keys[e.code] = false);
 
-// Theme generators
-function grasslands(i){return {coins:[{x:200,y:400}],enemies:[{type:"patrol",x:300,y:450,w:24,h:28,dir:1,minX:280,maxX:600,speed:60}]};}
-function caves(i){return {dark:true,hazards:[{x:10,y:14}],coins:[{x:400,y:300}],enemies:[{type:"fly",x:480,y:360,w:22,h:22,t:0,ampX:40,ampY:25,baseX:480,baseY:360,speed:2}]};}
-function sky(i){return {platforms:[{x:16*TILE,y:11*TILE,w:TILE,h:TILE,vx:0,vy:-40,minY:9*TILE,maxY:12*TILE}],coins:[{x:600,y:220}]};}
-function lava(i){return {hazards:[{x:6,y:14},{x:7,y:14},{x:8,y:14}],coins:[{x:260,y:340}],enemies:[{type:"chase",x:520,y:450,w:24,h:28,speed:85,range:240}]};}
-function ice(i){return {slippery:true,coins:[{x:300,y:350}],enemies:[{type:"patrol",x:400,y:450,w:24,h:28,dir:1,minX:380,maxX:600,speed:70}]};}
-function factory(i){return {conveyor:true,coins:[{x:420,y:320}],enemies:[{type:"turret",x:500,y:400,w:20,h:20,fire:0}]};}
-function haunted(i){return {coins:[{x:380,y:350}],enemies:[{type:"ghost",x:440,y:450,w:24,h:28,t:0}]};}
-function jungle(i){return {coins:[{x:320,y:300}],platforms:[{x:200,y:10*TILE,w:TILE,h:TILE,vx:50,vy:0,minX:180,maxX:220}]};}
-function space(i){return {lowGravity:true,coins:[{x:500,y:280}],enemies:[{type:"fly",x:480,y:360,w:22,h:22,t:0,ampX:60,ampY:40,baseX:480,baseY:360,speed:1}]};}
-function bossLevel(i){return {boss:true,enemies:[{type:"boss",x:400,y:400,w:60,h:60,hp:5}]};}
-
-// Generate 100 levels
-for(let i=1;i<=100;i++){
-  const boss=(i%10===0);
-  let themeData;
-  if(boss) themeData=bossLevel(i);
-  else if(i<=10) themeData=grasslands(i);
-  else if(i<=20) themeData=caves(i);
-  else if(i<=30) themeData=sky(i);
-  else if(i<=40) themeData=lava(i);
-  else if(i<=50) themeData=ice(i);
-  else if(i<=60) themeData=factory(i);
-  else if(i<=70) themeData=haunted(i);
-  else if(i<=80) themeData=jungle(i);
-  else if(i<=90) themeData=space(i);
-  else themeData={boss:true,enemies:[{type:"boss",x:400,y:400,w:60,h:60,hp:10}]};
-
-  const tiles=Array.from({length:H},(_,y)=>Array(W).fill(0));
-  tiles[15].fill(1);
-  if(!boss) tiles[15][30]=4;
-
-  levels.push({name:"Level "+i+(boss?" (Boss)":""),
-               tiles,start:{x:TILE*2,y:(15*TILE)-28},
-               coins:themeData.coins||[],enemies:themeData.enemies||[],
-               platforms:themeData.platforms||[],hazards:themeData.hazards||[],
-               boss,theme:themeData.theme||"",dark:themeData.dark||false,
-               slippery:themeData.slippery||false,conveyor:themeData.conveyor||false,
-               lowGravity:themeData.lowGravity||false});
-}
-
-let levelIndex=0;
-function loadLevel(i){
-  levelIndex=i%levels.length;
-  document.getElementById("levelLabel").textContent=levels[levelIndex].name+" | Coins: "+coinTotal;
-  player.x=levels[levelIndex].start.x;player.y=levels[levelIndex].start.y;
-  player.vx=player.vy=0;player.jumps=0;
-  document.getElementById("skipBtn").style.display=levels[levelIndex].boss?"block":"none";
-}
-loadLevel(0);
-
-// Skip button
-document.getElementById("skipBtn").onclick=()=>{loadLevel(levelIndex+1);};
-
-// Input
-const keys={};
-window.addEventListener("keydown",e=>keys[e.code]=true);
-window.addEventListener("keyup",e=>keys[e.code]=false);
-
-// Touch joystick
+// Touch joystick for horizontal move
 let moveVec={x:0};
 (function setupStick(){
   const area=document.getElementById('moveStick'),knob=document.getElementById('moveKnob');
@@ -122,16 +68,469 @@ let moveVec={x:0};
     const dx=e.touches[0].clientX-startX;
     const radius=area.clientWidth/2-20;
     const nx=Math.max(-radius,Math.min(radius,dx));
-    knob.style.left=`calc(50% + ${nx}px)`;moveVec.x=nx/radius;
+    knob.style.left=`calc(50% + ${nx}px)`; moveVec.x=nx/radius;
   });
   area.addEventListener('touchend',()=>{active=false;moveVec.x=0;knob.style.left='50%';});
 })();
 
 // Double jump
-function tryJump(){if(player.jumps<2){player.vy=-500;player.onGround=false;player.jumps++;}}
-document.getElementById('jumpBtn').addEventListener('touchstart',tryJump);
+function tryJump(){ if(player.jumps<2){ player.vy = -520; player.onGround=false; player.jumps++; } }
+document.getElementById('jumpBtn').addEventListener('touchstart', tryJump);
 
+// Basic AABB helpers
+function aabb(ax,ay,aw,ah,bx,by,bw,bh){ return ax < bx+bw && ax+aw > bx && ay < by+bh && ay+ah > by; }
+function onTopOf(ax,ay,aw,ah,bx,by,bw,bh){ return aabb(ax,ay,aw,ah,bx,by,bw,bh) && (ay+ah) <= (by+10) && player.vy>=0; }
+
+const bullets = []; // turret/boss bullets
+
+// Level structure
+const levels = [];
+let levelIndex = 0;
+
+function setHUD(name){ document.getElementById("levelLabel").textContent = `${name} | Coins: ${coinTotal}`; }
+
+function makeLevelBase(name){
+  return {
+    name,
+    bg:"#222",
+    dark:false,
+    lowGravity:false,
+    friction:1.0, // 1.0 normal, <1 slippery
+    conveyorZones:[], // {x,y,w,h,speed} speed positive -> right, negative -> left
+    platforms:[],     // {x,y,w,h,vx,vy,minX,maxX,minY,maxY}
+    hazards:[],       // {x,y,w,h}
+    bouncePads:[],    // {x,y,w,h,power}
+    breakables:[],    // {x,y,w,h,broken:false}
+    door:null,        // {x,y,w,h}
+    key:null,         // {x,y,w,h, collected:false}
+    coins:[],         // {x,y,r, collected:false}
+    enemies:[],       // various types
+    boss:false,
+    bossReward:100,
+    goal:{x:canvas.width-100, y:GROUND_Y-32, w:60, h:32}
+  };
+}
+
+// Theme generators (variation by index)
+function grasslands(i){
+  const L=makeLevelBase(`Level ${i} - Grasslands`);
+  L.bg = "#254027";
+  // Coins in arc
+  for(let k=0;k<4;k++) L.coins.push({x:150+ k*80, y:GROUND_Y-80 - Math.sin(k)*30, r:10, collected:false});
+  // Platforms islands
+  L.platforms.push({x:260,y:GROUND_Y-100,w:100,h:12,vx:0,vy:0});
+  L.platforms.push({x:420,y:GROUND_Y-160,w:120,h:12,vx:30,vy:0,minX:380,maxX:500});
+  // Hazards
+  L.hazards.push({x:580,y:GROUND_Y-16,w:80,h:16});
+  // Enemies patrol
+  L.enemies.push({type:"patrol",x:300,y:GROUND_Y-28,w:24,h:28,dir:1,minX:280,maxX:520,speed:60});
+  return L;
+}
+
+function caves(i){
+  const L=makeLevelBase(`Level ${i} - Caves`);
+  L.bg = "#1c1c1c"; L.dark=true;
+  // Narrow corridors using hazards as "walls"
+  L.platforms.push({x:220,y:GROUND_Y-90,w:90,h:12});
+  L.platforms.push({x:360,y:GROUND_Y-140,w:80,h:12});
+  L.breakables.push({x:360,y:GROUND_Y-152,w:40,h:12,broken:false});
+  L.hazards.push({x:160,y:GROUND_Y-16,w:60,h:16});
+  L.hazards.push({x:460,y:GROUND_Y-16,w:60,h:16});
+  L.coins.push({x:380,y:GROUND_Y-180,r:10, collected:false});
+  L.enemies.push({type:"fly",x:420,y:GROUND_Y-120,w:22,h:22,t:0,ampX:40,ampY:25,baseX:420,baseY:GROUND_Y-120,speed:2});
+  return L;
+}
+
+function sky(i){
+  const L=makeLevelBase(`Level ${i} - Sky`);
+  L.bg = "#1b2a49";
+  // Vertical climb
+  L.platforms.push({x:220,y:GROUND_Y-140,w:60,h:12});
+  L.platforms.push({x:300,y:GROUND_Y-200,w:60,h:12});
+  L.platforms.push({x:380,y:GROUND_Y-260,w:60,h:12});
+  L.bouncePads.push({x:180,y:GROUND_Y-16,w:40,h:16,power:900});
+  L.coins.push({x:380,y:GROUND_Y-280,r:10, collected:false});
+  L.enemies.push({type:"patrol",x:420,y:GROUND_Y-28,w:24,h:28,dir:-1,minX:360,maxX:520,speed:70});
+  return L;
+}
+
+function lava(i){
+  const L=makeLevelBase(`Level ${i} - Lava Fortress`);
+  L.bg = "#3b1e1e";
+  for(let k=0;k<4;k++) L.hazards.push({x:220+k*90,y:GROUND_Y-16,w:60,h:16});
+  L.platforms.push({x:600,y:GROUND_Y-120,w:90,h:12});
+  L.enemies.push({type:"chase",x:540,y:GROUND_Y-28,w:24,h:28,speed:85,range:240});
+  L.coins.push({x:620,y:GROUND_Y-140,r:10, collected:false});
+  return L;
+}
+
+function ice(i){
+  const L=makeLevelBase(`Level ${i} - Ice Peaks`);
+  L.bg = "#173e43"; L.friction = 0.45;
+  L.platforms.push({x:300,y:GROUND_Y-100,w:100,h:12});
+  L.platforms.push({x:480,y:GROUND_Y-140,w:100,h:12});
+  L.hazards.push({x:400,y:GROUND_Y-16,w:50,h:16});
+  L.coins.push({x:500,y:GROUND_Y-160,r:10, collected:false});
+  L.enemies.push({type:"patrol",x:440,y:GROUND_Y-28,w:24,h:28,dir:1,minX:420,maxX:560,speed:60});
+  return L;
+}
+
+function factory(i){
+  const L=makeLevelBase(`Level ${i} - Factory`);
+  L.bg = "#2c2c34"; 
+  L.conveyorZones.push({x:200,y:GROUND_Y-12,w:160,h:12,speed:120});
+  L.conveyorZones.push({x:420,y:GROUND_Y-12,w:160,h:12,speed:-120});
+  L.platforms.push({x:360,y:GROUND_Y-120,w:100,h:12});
+  L.enemies.push({type:"turret",x:520,y:GROUND_Y-48,w:20,h:20,fire:0,rate:1.1});
+  L.coins.push({x:380,y:GROUND_Y-140,r:10, collected:false});
+  return L;
+}
+
+function haunted(i){
+  const L=makeLevelBase(`Level ${i} - Haunted Ruins`);
+  L.bg = "#252038"; L.dark=true;
+  L.platforms.push({x:260,y:GROUND_Y-120,w:100,h:12});
+  L.door = {x:480,y:GROUND_Y-60,w:24,h:60}; 
+  L.key = {x:280,y:GROUND_Y-132,w:18,h:18, collected:false};
+  L.enemies.push({type:"ghost",x:420,y:GROUND_Y-28,w:24,h:28,t:0});
+  L.coins.push({x:520,y:GROUND_Y-80,r:10, collected:false});
+  return L;
+}
+
+function jungle(i){
+  const L=makeLevelBase(`Level ${i} - Jungle`);
+  L.bg = "#1f3a2d";
+  L.platforms.push({x:220,y:GROUND_Y-100,w:80,h:12,vx:60,vy:0,minX:180,maxX:320});
+  L.platforms.push({x:420,y:GROUND_Y-180,w:80,h:12,vy:60,minY:GROUND_Y-240,maxY:GROUND_Y-120});
+  L.coins.push({x:420,y:GROUND_Y-200,r:10, collected:false});
+  L.enemies.push({type:"patrol",x:300,y:GROUND_Y-28,w:24,h:28,dir:1,minX:260,maxX:360,speed:70});
+  return L;
+}
+
+function space(i){
+  const L=makeLevelBase(`Level ${i} - Space`);
+  L.bg = "#0a0f1d"; L.lowGravity = true;
+  L.platforms.push({x:260,y:GROUND_Y-160,w:80,h:12});
+  L.platforms.push({x:380,y:GROUND_Y-220,w:80,h:12});
+  L.hazards.push({x:320,y:GROUND_Y-16,w:70,h:16});
+  L.enemies.push({type:"fly",x:480,y:GROUND_Y-160,w:22,h:22,t:0,ampX:60,ampY:40,baseX:480,baseY:GROUND_Y-160,speed:1.4});
+  L.coins.push({x:380,y:GROUND_Y-240,r:10, collected:false});
+  return L;
+}
+
+function bossLevel(i){
+  const L=makeLevelBase(`Level ${i} - Boss`);
+  L.bg="#2a1f1f"; L.boss=true; L.goal = null;
+  L.enemies.push({type:"boss",x:500,y:GROUND_Y-60,w:80,h:80,hp:6,fire:0,rate:0.9});
+  return L;
+}
+
+// Build 100 levels with varied content
+for(let i=1;i<=100;i++){
+  let L;
+  if(i%10===0) L = bossLevel(i);
+  else if(i<=10) L = grasslands(i);
+  else if(i<=20) L = caves(i);
+  else if(i<=30) L = sky(i);
+  else if(i<=40) L = lava(i);
+  else if(i<=50) L = ice(i);
+  else if(i<=60) L = factory(i);
+  else if(i<=70) L = haunted(i);
+  else if(i<=80) L = jungle(i);
+  else L = space(i); // 81-99
+
+  levels.push(L);
+}
+
+// Level load/reset
+function loadLevel(idx){
+  levelIndex = ((idx%levels.length)+levels.length)%levels.length;
+  const L = levels[levelIndex];
+  hasKey = false;
+  player.x = 64; player.y = GROUND_Y-28; player.vx=0; player.vy=0; player.jumps=0; player.onGround=false;
+  bullets.length = 0;
+  setHUD(L.name);
+  document.getElementById("skipBtn").style.display = L.boss ? "block" : "none";
+}
+loadLevel(0);
+document.getElementById("skipBtn").onclick = ()=> loadLevel(levelIndex+1);
+
+// Update
 function update(dt){
-  const L=levels[levelIndex];
-  const gravity=L.lowGravity?500:1000;
-  const left=keys["ArrowLeft"]||moveVec.x<-0.
+  const L = levels[levelIndex];
+  const gravity = L.lowGravity ? 520 : 1000;
+  const maxSpeed = 220;
+  const friction = L.friction || 1.0;
+
+  // Input
+  const left = keys["ArrowLeft"] || keys["KeyA"] || moveVec.x < -0.2;
+  const right = keys["ArrowRight"] || keys["KeyD"] || moveVec.x > 0.2;
+  if(left && !right) player.vx = -maxSpeed * friction;
+  else if(right && !left) player.vx = maxSpeed * friction;
+  else player.vx *= 0.85 * friction;
+
+  if(keys["Space"] || keys["ArrowUp"] || keys["KeyW"]) tryJump();
+
+  // Gravity
+  player.vy += gravity * dt;
+
+  // Conveyors
+  for(const z of L.conveyorZones){
+    if(onTopOf(player.x,player.y,player.w,player.h,z.x,z.y,z.w,z.h)){
+      player.x += z.speed * dt;
+    }
+  }
+
+  // Move
+  player.x += player.vx * dt;
+  player.y += player.vy * dt;
+
+  // Ground
+  if(player.y + player.h > GROUND_Y){
+    player.y = GROUND_Y - player.h;
+    player.vy = 0; player.onGround=true; player.jumps=0;
+  } else {
+    player.onGround=false;
+  }
+
+  // Platforms movement and landing
+  for(const p of L.platforms){
+    if(p.vx){ p.x += p.vx * dt; if(p.minX!==undefined && (p.x<p.minX || p.x>p.maxX)) p.vx*=-1; }
+    if(p.vy){ p.y += p.vy * dt; if(p.minY!==undefined && (p.y<p.minY || p.y>p.maxY)) p.vy*=-1; }
+
+    if(onTopOf(player.x,player.y,player.w,player.h,p.x,p.y,p.w,p.h)){
+      player.y = p.y - player.h; player.vy = 0; player.onGround = true; player.jumps = 0;
+    }
+  }
+
+  // Bounce pads
+  for(const b of L.bouncePads){
+    if(onTopOf(player.x,player.y,player.w,player.h,b.x,b.y,b.w,b.h)){
+      player.vy = -b.power; player.onGround=false;
+    }
+  }
+
+  // Breakables
+  for(const br of L.breakables){
+    if(!br.broken && onTopOf(player.x,player.y,player.w,player.h,br.x,br.y,br.w,br.h)){
+      br.broken = true; player.onGround=false; player.vy = Math.max(player.vy, 50);
+    }
+  }
+
+  // Door and key
+  if(L.key && !L.key.collected && aabb(player.x,player.y,player.w,player.h,L.key.x,L.key.y,L.key.w,L.key.h)){
+    L.key.collected = true; hasKey = true;
+  }
+  if(L.door){
+    if(aabb(player.x,player.y,player.w,player.h,L.door.x,L.door.y,L.door.w,L.door.h)){
+      if(!hasKey){
+        // Block player from passing through door
+        if(player.x + player.w/2 < L.door.x + L.door.w/2) player.x = L.door.x - player.w;
+        else player.x = L.door.x + L.door.w;
+        player.vx = 0;
+      }
+    }
+  }
+
+  // Hazards
+  for(const h of L.hazards){
+    if(aabb(player.x,player.y,player.w,player.h,h.x,h.y,h.w,h.h)){
+      loadLevel(levelIndex); return;
+    }
+  }
+
+  // Coins
+  for(const c of L.coins){
+    if(!c.collected && aabb(player.x,player.y,player.w,player.h,c.x-c.r,c.y-c.r,c.r*2,c.r*2)){
+      c.collected = true; coinTotal++;
+      setHUD(L.name);
+    }
+  }
+
+  // Enemies
+  for(const e of L.enemies){
+    if(e.type==="patrol"){
+      e.x += (e.dir*e.speed*dt);
+      if(e.x<e.minX){ e.x=e.minX; e.dir*=-1; }
+      if(e.x+e.w>e.maxX){ e.x=e.maxX-e.w; e.dir*=-1; }
+    } else if(e.type==="fly"){
+      e.t += e.speed*dt;
+      e.x = e.baseX + Math.sin(e.t)*e.ampX;
+      e.y = e.baseY + Math.cos(e.t*0.9)*e.ampY;
+    } else if(e.type==="chase"){
+      const dx = player.x - e.x;
+      if(Math.abs(dx) < e.range) e.x += Math.sign(dx) * e.speed * dt;
+    } else if(e.type==="ghost"){
+      e.t += dt;
+      // Toggle visibility every ~1s
+      e.visible = Math.floor(e.t % 2)===0;
+    } else if(e.type==="turret"){
+      e.fire += dt;
+      if(e.fire >= e.rate){
+        e.fire = 0;
+        // shoot towards player
+        const bx = e.x + e.w/2, by = e.y + e.h/2;
+        const dx = player.x + player.w/2 - bx;
+        const dy = player.y + player.h/2 - by;
+        const len = Math.max(1, Math.hypot(dx,dy));
+        bullets.push({x:bx,y:by,w:6,h:6,vx:(dx/len)*260,vy:(dy/len)*260,ttl:4,color:"#ffcc00"});
+      }
+    } else if(e.type==="boss"){
+      e.fire += dt;
+      if(e.fire >= e.rate){
+        e.fire = 0;
+        // radial bullets
+        const N = 8;
+        for(let k=0;k<N;k++){
+          const ang = (k/N)*Math.PI*2;
+          bullets.push({x:e.x+e.w/2,y:e.y+e.h/2,w:8,h:8,vx:Math.cos(ang)*220,vy:Math.sin(ang)*220,ttl:5,color:"#ff6666"});
+        }
+      }
+    }
+
+    // Player vs enemy
+    if(e.type==="ghost"){
+      if(e.visible && aabb(player.x,player.y,player.w,player.h,e.x,e.y,e.w,e.h)){ loadLevel(levelIndex); return; }
+    } else if(e.type==="boss"){
+      // Damage boss only by stomping from top
+      const stomping = player.vy>0 && (player.y+player.h) <= (e.y+10) && aabb(player.x,player.y,player.w,player.h,e.x,e.y,e.w,e.h);
+      if(stomping){
+        player.vy = -500;
+        e.hp--;
+        if(e.hp<=0){ coinTotal += levels[levelIndex].bossReward; loadLevel(levelIndex+1); return; }
+      } else if(aabb(player.x,player.y,player.w,player.h,e.x,e.y,e.w,e.h)){
+        loadLevel(levelIndex); return;
+      }
+    } else {
+      if(aabb(player.x,player.y,player.w,player.h,e.x,e.y,e.w,e.h)){ loadLevel(levelIndex); return; }
+    }
+  }
+
+  // Bullets update
+  for(let i=bullets.length-1;i>=0;i--){
+    const b = bullets[i];
+    b.x += b.vx * dt; b.y += b.vy * dt; b.ttl -= dt;
+    if(aabb(player.x,player.y,player.w,player.h,b.x,b.y,b.w,b.h)){ loadLevel(levelIndex); return; }
+    if(b.ttl<=0) bullets.splice(i,1);
+  }
+
+  // Goal advance (non-boss)
+  if(!L.boss && L.goal){
+    if(aabb(player.x,player.y,player.w,player.h,L.goal.x,L.goal.y,L.goal.w,L.goal.h)){
+      loadLevel(levelIndex+1); return;
+    }
+  }
+}
+
+// Draw
+function draw(){
+  const L = levels[levelIndex];
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  // Background
+  ctx.fillStyle = L.bg; ctx.fillRect(0,0,canvas.width,canvas.height);
+
+  // Ground
+  ctx.fillStyle = "#555"; ctx.fillRect(0,GROUND_Y,canvas.width,4);
+
+  // Hazards
+  ctx.fillStyle = "#d84315";
+  for(const h of L.hazards){ ctx.fillRect(h.x,h.y,h.w,h.h); }
+
+  // Breakables
+  for(const br of L.breakables){
+    ctx.fillStyle = br.broken ? "rgba(120,90,60,0.3)" : "#8d6e63";
+    ctx.fillRect(br.x,br.y,br.w,br.h);
+  }
+
+  // Platforms
+  ctx.fillStyle = "#90a4ae";
+  for(const p of L.platforms){ ctx.fillRect(p.x,p.y,p.w,p.h); }
+
+  // Bounce pads
+  ctx.fillStyle = "#7cb342";
+  for(const b of L.bouncePads){ ctx.fillRect(b.x,b.y,b.w,b.h); }
+
+  // Conveyor zones
+  ctx.fillStyle = "rgba(200,200,255,0.2)";
+  for(const z of L.conveyorZones){ ctx.fillRect(z.x,z.y,z.w,z.h); }
+
+  // Door
+  if(L.door){ ctx.fillStyle = hasKey ? "#4caf50" : "#6d4c41"; ctx.fillRect(L.door.x,L.door.y,L.door.w,L.door.h); }
+
+  // Key
+  if(L.key && !L.key.collected){ ctx.fillStyle = "#cddc39"; ctx.fillRect(L.key.x,L.key.y,L.key.w,L.key.h); }
+
+  // Goal
+  if(!L.boss && L.goal){
+    ctx.fillStyle = "#1e88e5"; ctx.fillRect(L.goal.x,L.goal.y,L.goal.w,L.goal.h);
+  }
+
+  // Coins
+  for(const c of L.coins){
+    if(!c.collected){
+      ctx.fillStyle = "#ffd700"; ctx.beginPath(); ctx.arc(c.x,c.y,c.r,0,Math.PI*2); ctx.fill();
+    }
+  }
+
+  // Enemies
+  for(const e of L.enemies){
+    let color = "#ff4444";
+    if(e.type==="fly") color="#ff8a65";
+    if(e.type==="chase") color="#f44336";
+    if(e.type==="ghost") color = (e.visible?"#9c27b0":"rgba(156,39,176,0.3)");
+    if(e.type==="turret") color="#b0bec5";
+    if(e.type==="boss") color="#e53935";
+    ctx.fillStyle = color;
+    ctx.fillRect(e.x,e.y,e.w,e.h);
+    if(e.type==="boss"){
+      // boss HP bar
+      ctx.fillStyle="#222"; ctx.fillRect(e.x,e.y-10,e.w,6);
+      ctx.fillStyle="#76ff03"; ctx.fillRect(e.x,e.y-10,Math.max(0,(e.hp/6)*e.w),6);
+    }
+  }
+
+  // Bullets
+  for(const b of bullets){
+    ctx.fillStyle = b.color || "#fff";
+    ctx.fillRect(b.x,b.y,b.w,b.h);
+  }
+
+  // Player
+  ctx.fillStyle = player.color;
+  ctx.fillRect(player.x,player.y,player.w,player.h);
+
+  // Darkness overlay
+  if(L.dark){
+    ctx.save();
+    ctx.fillStyle="rgba(0,0,0,0.85)";
+    ctx.fillRect(0,0,canvas.width,canvas.height);
+    const cx=player.x+player.w/2, cy=player.y+player.h/2, radius=130;
+    const grad=ctx.createRadialGradient(cx,cy,0,cx,cy,radius);
+    grad.addColorStop(0,"rgba(0,0,0,0)");
+    grad.addColorStop(1,"rgba(0,0,0,0.85)");
+    ctx.globalCompositeOperation="destination-out";
+    ctx.fillStyle=grad; ctx.beginPath(); ctx.arc(cx,cy,radius,0,Math.PI*2); ctx.fill();
+    ctx.restore();
+  }
+}
+
+// Game loop
+let last = performance.now();
+function loop(now){
+  const dt = Math.min(0.033, (now-last)/1000); last = now;
+  update(dt);
+  draw();
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+
+// Keyboard color swap
+window.addEventListener('keydown',e=>{
+  if(e.code==="Digit1") player.color="#ffd166";
+  if(e.code==="Digit2") player.color="#ff0000";
+  if(e.code==="Digit3") player.color="#00ff00";
+  if(e.code==="Digit4") player.color="#0000ff";
+});
+</script>
+</body>
+</html>
