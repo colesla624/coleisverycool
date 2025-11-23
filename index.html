@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <title>Platformer with Coins & Enemies</title>
+  <title>Creative Platformer</title>
   <style>
     body { margin:0; background:#111; }
     canvas { display:block; }
@@ -43,36 +43,49 @@ const TILE=32;
 let coinTotal=0;
 let playerColor="#ffd166";
 
-// Generate 22 levels with coins + enemies
-const levels=[];
-for(let i=1;i<=22;i++){
-  const tiles=Array.from({length:16},(_,y)=>{
-    const row=Array(32).fill(0);
-    if(y===15){row.fill(1);row[30]=4;} // ground + goal
-    if(i%2===0 && y===13){row[8]=1;row[12]=1;row[16]=1;row[20]=1;}
-    if(i%3===0 && y===14){row[5]=2;row[6]=2;} // hazards
-    return row;
-  });
-  const coins=[
-    {x:200,y:400,collected:false},
-    {x:400,y:300,collected:false},
-    {x:600,y:350,collected:false}
-  ];
-  const enemies=[
-    {x:350,y:450,w:24,h:28,dir:1},
-    {x:500,y:450,w:24,h:28,dir:-1}
-  ];
+// Define creative levels
+const levels=[
+  {
+    name:"Level 1 - Intro",
+    tiles:Array.from({length:16},(_,y)=>{const row=Array(32).fill(0);if(y===15){row.fill(1);row[30]=4;}return row;}),
+    start:{x:TILE*2,y:(15*TILE)-28},
+    coins:[{x:200,y:400,collected:false}],
+    enemies:[]
+  },
+  {
+    name:"Level 2 - Platforms",
+    tiles:Array.from({length:16},(_,y)=>{const row=Array(32).fill(0);if(y===15){row.fill(1);row[28]=4;}if(y===13){row[10]=1;row[14]=1;row[18]=1;}return row;}),
+    start:{x:TILE*2,y:(15*TILE)-28},
+    coins:[{x:300,y:350,collected:false},{x:500,y:350,collected:false}],
+    enemies:[{x:400,y:450,w:24,h:28,dir:1}]
+  },
+  {
+    name:"Level 3 - Hazards",
+    tiles:Array.from({length:16},(_,y)=>{const row=Array(32).fill(0);if(y===15){row.fill(1);row[25]=4;}if(y===14){row[5]=2;row[6]=2;}return row;}),
+    start:{x:TILE*2,y:(15*TILE)-28},
+    coins:[{x:200,y:300,collected:false}],
+    enemies:[{x:350,y:450,w:24,h:28,dir:-1}]
+  },
+  {
+    name:"Level 4 - Vertical",
+    tiles:Array.from({length:16},(_,y)=>{const row=Array(32).fill(0);if(y===15){row.fill(1);}if(y===10){row[15]=1;}if(y===8){row[22]=1;}if(y===5){row[30]=4;}return row;}),
+    start:{x:TILE*2,y:(15*TILE)-28},
+    coins:[{x:600,y:200,collected:false}],
+    enemies:[]
+  }
+];
+// Generate more levels by variation
+for(let i=5;i<=22;i++){
   levels.push({
     name:"Level "+i,
-    width:32,height:16,
-    tiles:tiles,
+    tiles:Array.from({length:16},(_,y)=>{const row=Array(32).fill(0);if(y===15){row.fill(1);row[30]=4;}if(i%2===0&&y===13){row[8]=1;row[12]=1;row[16]=1;}if(i%3===0&&y===14){row[5]=2;row[6]=2;}return row;}),
     start:{x:TILE*2,y:(15*TILE)-28},
-    coins:coins,
-    enemies:enemies
+    coins:[{x:200,y:400,collected:false},{x:400,y:300,collected:false}],
+    enemies:[{x:350,y:450,w:24,h:28,dir:1}]
   });
 }
-let levelIndex=0;
 
+let levelIndex=0;
 const player={x:0,y:0,w:24,h:28,vx:0,vy:0,onGround:false};
 function loadLevel(i){
   levelIndex=i%levels.length;
@@ -86,7 +99,7 @@ loadLevel(0);
 function tileAt(px,py){
   const L=levels[levelIndex];
   const tx=Math.floor(px/TILE),ty=Math.floor(py/TILE);
-  if(tx<0||ty<0||tx>=L.width||ty>=L.height)return 0;
+  if(tx<0||ty<0||tx>=32||ty>=16)return 0;
   return L.tiles[ty][tx];
 }
 
@@ -96,7 +109,7 @@ window.addEventListener("keyup",e=>keys[e.code]=false);
 
 // Touch joystick
 let moveVec={x:0};
-function setupStick(){
+(function setupStick(){
   const area=document.getElementById('moveStick'),knob=document.getElementById('moveKnob');
   let active=false,startX=0;
   area.addEventListener('touchstart',e=>{active=true;startX=e.touches[0].clientX;});
@@ -109,8 +122,7 @@ function setupStick(){
     moveVec.x=nx/radius;
   });
   area.addEventListener('touchend',()=>{active=false;moveVec.x=0;knob.style.left='50%';});
-}
-setupStick();
+})();
 
 // Jump button
 document.getElementById('jumpBtn').addEventListener('touchstart',()=>{
@@ -148,13 +160,13 @@ function update(dt){
     }
   }
 
-  // enemies movement + collision
+  // enemies
   for(const e of levels[levelIndex].enemies){
     e.x+=e.dir*60*dt;
-    if(e.x<300||e.x>600) e.dir*=-1; // patrol bounds
+    if(e.x<300||e.x>600) e.dir*=-1;
     if(player.x<e.x+e.w && player.x+player.w>e.x &&
        player.y<e.y+e.h && player.y+player.h>e.y){
-      loadLevel(levelIndex); // collision resets level
+      loadLevel(levelIndex);
     }
   }
 }
@@ -162,39 +174,5 @@ function update(dt){
 function draw(){
   ctx.fillStyle="#222";ctx.fillRect(0,0,canvas.width,canvas.height);
   const L=levels[levelIndex];
-  for(let y=0;y<L.height;y++){
-    for(let x=0;x<L.width;x++){
-      const t=L.tiles[y][x];if(!t)continue;
-      const px=x*TILE,py=y*TILE;
-      if(t===1){ctx.fillStyle="#555";ctx.fillRect(px,py,TILE,TILE);}
-      if(t===2){ctx.fillStyle=(Math.floor(Date.now()/200)%2?"#b71c1c":"#ff7043");ctx.fillRect(px,py,TILE,TILE);}
-      if(t===4){ctx.fillStyle="#1e88e5";ctx.fillRect(px,py,TILE,TILE);}
-    }
-  }
-  for(const c of L.coins){
-    if(!c.collected){
-      ctx.fillStyle="#ffd700";
-      ctx.beginPath();
-      ctx.arc(c.x,c.y,10,0,Math.PI*2);
-      ctx.fill();
-    }
-  }
-  for(const e of L.enemies){
-    ctx.fillStyle="#ff4444";
-    ctx.fillRect(e.x,e.y,e.w,e.h);
-  }
-  ctx.fillStyle=playerColor;
-  ctx.fillRect(player.x,player.y,player.w,player.h);
-}
-
-let last=performance.now();
-function loop(now){
-  const dt=(now-last)/1000;last=now;
-  update(dt);
-  draw();
-  requestAnimationFrame(loop);
-}
-requestAnimationFrame(loop);
-</script>
-</body>
-</html>
+  for(let y=0;y<16;y++){
+    for(let x=0
