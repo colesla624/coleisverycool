@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <title>Platformer — Safety Buffer, Invulnerability, Expanded Obstacles</title>
+  <title>Platformer — Expanded + Progressive Difficulty</title>
   <style>
     body { margin:0; background:#111; }
     canvas { display:block; }
@@ -18,7 +18,8 @@
     }
     .stick-knob {
       position:absolute; left:50%; top:50%;
-      width:40px; height:40px;
+      width:40px; height:40%;
+      height:40px;
       border-radius:50%;
       background:#0af;
       transform:translate(-50%,-50%);
@@ -60,8 +61,12 @@
 /* ===== Canvas ===== */
 const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
-function resize(){ canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
-resize(); window.addEventListener("resize", resize);
+function resize() {
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+}
+resize();
+window.addEventListener("resize", resize);
 
 /* ===== Constants ===== */
 const TILE = 32;
@@ -71,15 +76,8 @@ const GROUND_Y = 15 * TILE;
 let coinTotal = 0;
 let hasKey = false;
 const player = {
-  x: 64,
-  y: GROUND_Y - 28,
-  w: 24,
-  h: 28,
-  vx: 0,
-  vy: 0,
-  onGround: false,
-  jumps: 0,
-  face: 1,
+  x: 64, y: GROUND_Y - 28, w: 24, h: 28,
+  vx: 0, vy: 0, onGround: false, jumps: 0, face: 1,
   color: "#ffd166"
 };
 
@@ -93,6 +91,7 @@ let moveVec = { x: 0 };
   const area = document.getElementById("moveStick");
   const knob = document.getElementById("moveKnob");
   let active = false, startX = 0;
+
   area.addEventListener("touchstart", e => { active = true; startX = e.touches[0].clientX; });
   area.addEventListener("touchmove", e => {
     if (!active) return;
@@ -105,11 +104,21 @@ let moveVec = { x: 0 };
   area.addEventListener("touchend", () => { active = false; moveVec.x = 0; knob.style.left = "50%"; });
 })();
 document.getElementById("jumpBtn").addEventListener("touchstart", tryJump);
-function tryJump(){ if (player.jumps < 2) { player.vy = -520; player.onGround = false; player.jumps++; } }
+function tryJump(){
+  if (player.jumps < 2) {
+    player.vy = -520;
+    player.onGround = false;
+    player.jumps++;
+  }
+}
 
 /* ===== Utils ===== */
-function aabb(ax, ay, aw, ah, bx, by, bw, bh){ return ax < bx + bw && ax + aw > bx && ay < by + bh && ay + ah > by; }
-function onTopOf(ax, ay, aw, ah, bx, by, bw, bh){ return aabb(ax, ay, aw, ah, bx, by, bw, bh) && ay + ah <= by + 10 && player.vy >= 0; }
+function aabb(ax, ay, aw, ah, bx, by, bw, bh) {
+  return ax < bx + bw && ax + aw > bx && ay < by + bh && ay + ah > by;
+}
+function onTopOf(ax, ay, aw, ah, bx, by, bw, bh) {
+  return aabb(ax, ay, aw, ah, bx,by,bw,bh) && ay + ah <= by + 10 && player.vy >= 0;
+}
 function makePRNG(seed){ let s = seed >>> 0; return function(){ s = (s * 1664525 + 1013904223) >>> 0; return (s & 0xffffffff) / 4294967296; }; }
 
 /* ===== Invulnerability after death ===== */
@@ -121,24 +130,27 @@ let levelIndex = 1;
 let level = null;
 const bullets = [];
 
+/* ===== HUD ===== */
 function setHUD(name){ document.getElementById("levelLabel").textContent = `${name} | Coins: ${coinTotal}`; }
 
-/* ===== Safety buffer (one player cube away) ===== */
-function safePlaceRect(obj, startX, startY){
+/* ===== Safety buffer (one player cube from spawn) ===== */
+function safePlaceRect(obj, startX = 64, startY = GROUND_Y - 28){
   const cube = Math.max(player.w, player.h);
   const dx = Math.abs((obj.x + obj.w / 2) - (startX + player.w / 2));
   const dy = Math.abs((obj.y + obj.h / 2) - (startY + player.h / 2));
   return dx > cube || dy > cube;
 }
-function safePlacePoint(x, y, startX, startY){
-  const cube = Math.max(player.w, player.h);
-  const dx = Math.abs(x - (startX + player.w / 2));
-  const dy = Math.abs(y - (startY + player.h / 2));
-  return dx > cube || dy > cube;
+function pushHazardSafe(L, h){ if (safePlaceRect(h)) L.hazards.push(h); }
+function pushEnemySafe(L, e){ if (safePlaceRect({ x:e.x, y:e.y, w:e.w || 24, h:e.h || 24 })) L.enemies.push(e); }
+function pushBulletSafe(b){ if (safePlaceRect({ x:b.x, y:b.y, w:b.w || 6, h:b.h || 6 })) bullets.push(b); }
+
+/* ===== Progressive difficulty ===== */
+function difficultyFactor(i){
+  // 1.0 at level 1 → ~2.0 at level 100; slight nonlinearity for late-game spice
+  const base = 1 + (i / 100);
+  const curve = 1 + Math.max(0, (i - 50)) / 200; // +0.0 to +0.25 after level 50
+  return base * curve;
 }
-function pushHazardSafe(L, h){ if (safePlaceRect(h, 64, GROUND_Y - 28)) L.hazards.push(h); }
-function pushEnemySafe(L, e){ if (safePlaceRect({ x: e.x, y: e.y, w: e.w || 24, h: e.h || 24 }, 64, GROUND_Y - 28)) L.enemies.push(e); }
-function pushBulletSafe(b){ if (safePlaceRect({ x: b.x, y: b.y, w: b.w || 6, h: b.h || 6 }, 64, GROUND_Y - 28)) bullets.push(b); }
 
 /* ===== Level base ===== */
 function makeLevelBase(name){
@@ -149,19 +161,19 @@ function makeLevelBase(name){
     flashlight: false,
     lowGravity: false,
     friction: 1.0,
+    conveyorZones: [],
 
-    platforms: [],     // static or moving
-    fallPlatforms: [], // drop after stand
-    hazards: [],       // spikes, lava, saw seats etc.
-    saws: [],          // moving circular hazards
-    pendulums: [],     // swinging hazards
-    windZones: [],     // push player
-    teleportPads: [],  // warp player
-    timedDoors: [],    // open/close rhythmically
+    platforms: [],
+    fallPlatforms: [],
+    hazards: [],
+    saws: [],
+    pendulums: [],
+    windZones: [],
+    teleportPads: [],
+    timedDoors: [],
 
     breakables: [],
     bouncePads: [],
-    conveyorZones: [],
     enemies: [],
     coins: [],
     door: null,
@@ -173,27 +185,24 @@ function makeLevelBase(name){
   };
 }
 
-/* ===== Generators by world ===== */
+/* ===== Generators per theme with difficulty scaling ===== */
 function genTutorial(){
   const L = makeLevelBase("Level 1 - Tutorial");
   L.bg = "#254027";
   L.platforms.push({ x: 220, y: GROUND_Y - 80, w: 120, h: 12 });
   L.coins.push({ x: 240, y: GROUND_Y - 100, r: 10, collected: false });
-
-  // Gentle pendulum far from spawn
+  // Demo pendulum and falling platform (gentle)
   L.pendulums.push({ x: 420, y: GROUND_Y - 120, r: 22, angle: 0, speed: 1.6 });
-  // Falling platform demonstration
-  L.fallPlatforms.push({ x: 560, y: GROUND_Y - 160, w: 90, h: 12, timer: 0, fall: false });
-  // No lethal at spawn; use helpers for safety
+  L.fallPlatforms.push({ x: 560, y: GROUND_Y - 160, w: 90, h: 12, timer: 0, fall: false, threshold: 1.8 });
   pushHazardSafe(L, { x: 480, y: GROUND_Y - 16, w: 80, h: 16 });
   return L;
 }
 
 function genGrasslands(i, rnd){
   const L = makeLevelBase(`Level ${i} - Grasslands`);
+  const f = difficultyFactor(i);
   L.bg = "#254027";
 
-  // Platforms – mild variety
   const n = 2 + Math.floor(rnd() * 2);
   for (let k = 0; k < n; k++){
     const px = 220 + Math.floor(rnd() * 520);
@@ -203,26 +212,26 @@ function genGrasslands(i, rnd){
     if (rnd() < 0.6) L.coins.push({ x: px + pw / 2, y: py - 30, r: 10, collected: false });
   }
 
-  // Hazards with safety buffer
-  if (rnd() < 0.8) pushHazardSafe(L, { x: 300 + Math.floor(rnd() * 480), y: GROUND_Y - 16, w: 60 + Math.floor(rnd() * 80), h: 16 });
-
-  // Enemies with safety buffer
-  const patrols = 1 + Math.floor(rnd() * 2);
-  for (let p = 0; p < patrols; p++){
-    const base = 300 + Math.floor(rnd() * 420);
-    pushEnemySafe(L, { type: "patrol", x: base, y: GROUND_Y - 28, w: 24, h: 28, dir: rnd() < 0.5 ? -1 : 1, minX: base - 80, maxX: base + 120, speed: 60 + Math.floor(rnd() * 40) });
+  if (rnd() < 0.7){
+    pushHazardSafe(L, { x: 300 + Math.floor(rnd() * 480), y: GROUND_Y - 16, w: Math.floor((60 + rnd() * 80) * f), h: 16 });
   }
 
-  // New obstacles
-  L.pendulums.push({ x: 520, y: GROUND_Y - 120, r: 24, angle: 0, speed: 2 });
-  L.saws.push({ x: 420, y: GROUND_Y - 40, r: 14, dir: 1, minX: 380, maxX: 580, speed: 90 });
-  L.fallPlatforms.push({ x: 620, y: GROUND_Y - 160, w: 80, h: 12, timer: 0, fall: false });
+  const patrols = 1 + Math.floor(rnd() * (1 + f));
+  for (let p = 0; p < patrols; p++){
+    const base = 300 + Math.floor(rnd() * 420);
+    pushEnemySafe(L, { type: "patrol", x: base, y: GROUND_Y - 28, w: 24, h: 28, dir: rnd() < 0.5 ? -1 : 1, minX: base - 80, maxX: base + 120, speed: Math.floor((60 + rnd() * 40) * f) });
+  }
+
+  L.pendulums.push({ x: 520, y: GROUND_Y - 120, r: 24, angle: 0, speed: 2 * f });
+  L.saws.push({ x: 420, y: GROUND_Y - 40, r: 14, dir: 1, minX: 380, maxX: 580, speed: 90 * f });
+  L.fallPlatforms.push({ x: 600, y: GROUND_Y - 160, w: 80, h: 12, timer: 0, fall: false, threshold: Math.max(0.8, 1.8 / f) });
 
   return L;
 }
 
 function genCaves(i, rnd){
   const L = makeLevelBase(`Level ${i} - Caves`);
+  const f = difficultyFactor(i);
   L.bg = "#1c1c1c"; L.dark = true; L.flashlight = true;
 
   const ledges = 3 + Math.floor(rnd() * 2);
@@ -237,30 +246,29 @@ function genCaves(i, rnd){
 
   const pits = 1 + Math.floor(rnd() * 2);
   for (let k = 0; k < pits; k++){
-    pushHazardSafe(L, { x: 220 + Math.floor(rnd() * 540), y: GROUND_Y - 16, w: 50 + Math.floor(rnd() * 70), h: 16 });
+    pushHazardSafe(L, { x: 220 + Math.floor(rnd() * 540), y: GROUND_Y - 16, w: Math.floor((50 + rnd() * 70) * f), h: 16 });
   }
 
-  // Ceiling spikes (hazard rectangles)
   if (rnd() < 0.7){
-    pushHazardSafe(L, { x: 340 + Math.floor(rnd() * 260), y: GROUND_Y - 260, w: 100, h: 10 });
+    pushHazardSafe(L, { x: 340 + Math.floor(rnd() * 260), y: GROUND_Y - 260, w: Math.floor(80 * f), h: 10 });
   }
 
-  // Bats
-  const bats = 1 + Math.floor(rnd() * 3);
+  const bats = 1 + Math.floor(rnd() * (1 + f));
   for (let b = 0; b < bats; b++){
     const bx = 220 + Math.floor(rnd() * 540);
     const by = GROUND_Y - (120 + Math.floor(rnd() * 180));
-    pushEnemySafe(L, { type: "fly", x: bx, y: by, w: 22, h: 22, t: rnd() * 6, ampX: 40 + Math.floor(rnd() * 30), ampY: 25 + Math.floor(rnd() * 20), baseX: bx, baseY: by, speed: 1.5 + rnd() * 1.2 });
+    pushEnemySafe(L, { type: "fly", x: bx, y: by, w: 22, h: 22, t: rnd() * 6, ampX: Math.floor(40 + rnd() * 30 * f), ampY: Math.floor(25 + rnd() * 20 * f), baseX: bx, baseY: by, speed: 1.5 + rnd() * (1.2 * f) });
   }
 
-  // Timed doors
-  L.timedDoors.push({ x: 520, y: GROUND_Y - 72, w: 24, h: 72, t: 0, period: 2.5, open: true });
+  L.timedDoors.push({ x: 520, y: GROUND_Y - 72, w: 24, h: 72, t: 0, period: Math.max(1.5, 2.5 / (0.8 + f * 0.4)), open: true });
+  L.pendulums.push({ x: 420, y: GROUND_Y - 170, r: 18, angle: 0, speed: 1.8 * f });
 
   return L;
 }
 
 function genSky(i, rnd){
   const L = makeLevelBase(`Level ${i} - Sky`);
+  const f = difficultyFactor(i);
   L.bg = "#1b2a49";
 
   const steps = 4 + Math.floor(rnd() * 3);
@@ -273,45 +281,45 @@ function genSky(i, rnd){
     px += 80 + Math.floor(rnd() * 90);
   }
 
-  // Wind zone
-  L.windZones.push({ x: 280, y: GROUND_Y - 180, w: 240, h: 140, strength: 180 });
-
-  // Teleport pads
+  L.windZones.push({ x: 280, y: GROUND_Y - 180, w: 240, h: 140, strength: Math.floor(140 + 40 * f) });
   L.teleportPads.push({ x: 360, y: GROUND_Y - 200, w: 20, h: 20, toX: 620, toY: GROUND_Y - 260 });
 
-  // Saws
-  L.saws.push({ x: 300, y: GROUND_Y - 60, r: 14, dir: 1, minX: 260, maxX: 460, speed: 110 });
+  L.saws.push({ x: 300, y: GROUND_Y - 60, r: 14, dir: 1, minX: 260, maxX: 460, speed: 110 * f });
+  L.pendulums.push({ x: 540, y: GROUND_Y - 180, r: 20, angle: 0, speed: 2.2 * f });
 
   return L;
 }
 
 function genLava(i, rnd){
   const L = makeLevelBase(`Level ${i} - Lava Fortress`);
+  const f = difficultyFactor(i);
   L.bg = "#3b1e1e";
 
   const pools = 2 + Math.floor(rnd() * 3);
   for (let k = 0; k < pools; k++){
-    pushHazardSafe(L, { x: 220 + k * 120 + Math.floor(rnd() * 60), y: GROUND_Y - 16, w: 60 + Math.floor(rnd() * 90), h: 16 });
+    pushHazardSafe(L, { x: 220 + k * 120 + Math.floor(rnd() * 60), y: GROUND_Y - 16, w: Math.floor((60 + rnd() * 90) * f), h: 16 });
   }
 
   L.platforms.push({ x: 560 + Math.floor(rnd() * 80), y: GROUND_Y - 120 - Math.floor(rnd() * 40), w: 80 + Math.floor(rnd() * 50), h: 12 });
 
-  const chasers = 1 + Math.floor(rnd() * 2);
+  const chasers = 1 + Math.floor(rnd() * (1 + f));
   for (let c = 0; c < chasers; c++){
     const ex = 420 + Math.floor(rnd() * 300);
-    pushEnemySafe(L, { type: "chase", x: ex, y: GROUND_Y - 28, w: 24, h: 28, speed: 85 + Math.floor(rnd() * 40), range: 240 + Math.floor(rnd() * 120) });
+    pushEnemySafe(L, { type: "chase", x: ex, y: GROUND_Y - 28, w: 24, h: 28, speed: Math.floor((85 + rnd() * 40) * f), range: Math.floor(240 + rnd() * 120 * f) });
   }
 
-  // Collapsing bridge (fall platforms in a line)
-  for (let j = 0; j < 3; j++){
-    L.fallPlatforms.push({ x: 360 + j * 60, y: GROUND_Y - 60, w: 50, h: 10, timer: 0, fall: false });
+  for (let j = 0; j < 3 + Math.floor(f / 0.7); j++){
+    L.fallPlatforms.push({ x: 360 + j * 60, y: GROUND_Y - 60, w: 50, h: 10, timer: 0, fall: false, threshold: Math.max(0.6, 1.6 / f) });
   }
+
+  L.saws.push({ x: 620, y: GROUND_Y - 40, r: 16, dir: -1, minX: 580, maxX: 760, speed: 120 * f });
 
   return L;
 }
 
 function genIce(i, rnd){
   const L = makeLevelBase(`Level ${i} - Ice Peaks`);
+  const f = difficultyFactor(i);
   L.bg = "#173e43";
   L.friction = 0.55;
 
@@ -324,38 +332,41 @@ function genIce(i, rnd){
     if (rnd() < 0.5) L.coins.push({ x: px + pw / 2, y: py - 26, r: 10, collected: false });
   }
 
-  if (rnd() < 0.7) pushHazardSafe(L, { x: 320 + Math.floor(rnd() * 300), y: GROUND_Y - 16, w: 60 + Math.floor(rnd() * 80), h: 16 });
+  if (rnd() < 0.7) pushHazardSafe(L, { x: 320 + Math.floor(rnd() * 300), y: GROUND_Y - 16, w: Math.floor((60 + rnd() * 80) * f), h: 16 });
 
-  pushEnemySafe(L, { type: "patrol", x: 360 + Math.floor(rnd() * 240), y: GROUND_Y - 28, w: 24, h: 28, dir: rnd() < 0.5 ? -1 : 1, minX: 300, maxX: 620, speed: 60 + Math.floor(rnd() * 30) });
+  const enemySpeed = Math.floor((60 + rnd() * 30) * f);
+  pushEnemySafe(L, { type: "patrol", x: 360 + Math.floor(rnd() * 240), y: GROUND_Y - 28, w: 24, h: 28, dir: rnd() < 0.5 ? -1 : 1, minX: 300, maxX: 620, speed: enemySpeed });
 
-  // Swinging icicle
-  L.pendulums.push({ x: 480, y: GROUND_Y - 180, r: 18, angle: 0, speed: 2.2 });
+  L.pendulums.push({ x: 480, y: GROUND_Y - 180, r: 18, angle: 0, speed: 2.2 * f });
 
   return L;
 }
 
 function genFactory(i, rnd){
   const L = makeLevelBase(`Level ${i} - Factory`);
+  const f = difficultyFactor(i);
   L.bg = "#2c2c34";
 
-  L.conveyorZones.push({ x: 200, y: GROUND_Y - 12, w: 160, h: 12, speed: 140 });
-  L.conveyorZones.push({ x: 420, y: GROUND_Y - 12, w: 160, h: 12, speed: -140 });
+  L.conveyorZones.push({ x: 200, y: GROUND_Y - 12, w: 160, h: 12, speed: 140 * f });
+  L.conveyorZones.push({ x: 420, y: GROUND_Y - 12, w: 160, h: 12, speed: -140 * f });
 
-  L.platforms.push({ x: 360 + Math.floor(rnd() * 140), y: GROUND_Y - 120 - Math.floor(rnd() * 40), w: 90 + Math.floor(rnd() * 60), h: 12 });
+  L.platforms.push({ x: 360 + Math.floor(rnd() * 140), y: GROUND_Y - 120 - Math.floor(rnd() * 40), w: 100, h: 12 });
 
-  const turrets = 1 + Math.floor(rnd() * 2);
+  const turrets = 1 + Math.floor(rnd() * (1 + f));
   for (let t = 0; t < turrets; t++){
-    pushEnemySafe(L, { type: "turret", x: 500 + Math.floor(rnd() * 120), y: GROUND_Y - 48 - Math.floor(rnd() * 60), w: 20, h: 20, fire: 0, rate: 0.9 + rnd() * 0.6 });
+    pushEnemySafe(L, { type: "turret", x: 500 + Math.floor(rnd() * 120), y: GROUND_Y - 48 - Math.floor(rnd() * 60), w: 20, h: 20, fire: 0, rate: Math.max(0.5, 0.9 / (0.7 + f * 0.4)) });
   }
 
-  // Crushers (timed doors from ceiling)
-  L.timedDoors.push({ x: 460, y: GROUND_Y - 180, w: 40, h: 140, t: 0, period: 2.2, open: false });
+  L.timedDoors.push({ x: 460, y: GROUND_Y - 180, w: 40, h: 140, t: 0, period: Math.max(1.2, 2.2 / (0.7 + f * 0.4)), open: false });
+
+  L.saws.push({ x: 360, y: GROUND_Y - 60, r: 15, dir: 1, minX: 320, maxX: 580, speed: 130 * f });
 
   return L;
 }
 
 function genHaunted(i, rnd){
   const L = makeLevelBase(`Level ${i} - Haunted Ruins`);
+  const f = difficultyFactor(i);
   L.bg = "#252038";
   L.dark = true; L.flashlight = true;
 
@@ -364,83 +375,79 @@ function genHaunted(i, rnd){
   L.door = { x: 520 + Math.floor(rnd() * 40), y: GROUND_Y - 72, w: 24, h: 72 };
   L.key = { x: 260 + Math.floor(rnd() * 200), y: GROUND_Y - 132, w: 18, h: 18, collected: false };
 
-  const ghosts = 1 + Math.floor(rnd() * 2);
+  const ghosts = 1 + Math.floor(rnd() * (1 + f));
   for (let g = 0; g < ghosts; g++){
     pushEnemySafe(L, { type: "ghost", x: 400 + Math.floor(rnd() * 200), y: GROUND_Y - 28, w: 24, h: 28, t: rnd() * 3, visible: true });
   }
 
-  // Ghost pendulum
-  L.pendulums.push({ x: 420, y: GROUND_Y - 170, r: 18, angle: 0, speed: 1.8 });
-
-  // Timed gate
-  L.timedDoors.push({ x: 600, y: GROUND_Y - 90, w: 30, h: 90, t: 0, period: 3.0, open: true });
+  L.pendulums.push({ x: 420, y: GROUND_Y - 170, r: 18, angle: 0, speed: 1.8 * f });
+  L.timedDoors.push({ x: 600, y: GROUND_Y - 90, w: 30, h: 90, t: 0, period: Math.max(1.4, 3.0 / (0.7 + f * 0.4)), open: true });
 
   return L;
 }
 
 function genJungle(i, rnd){
   const L = makeLevelBase(`Level ${i} - Jungle`);
+  const f = difficultyFactor(i);
   L.bg = "#1f3a2d";
 
-  L.platforms.push({ x: 220 + Math.floor(rnd() * 160), y: GROUND_Y - 110 - Math.floor(rnd() * 40), w: 90 + Math.floor(rnd() * 40), h: 12, vx: rnd() < 0.5 ? 70 : -70, vy: 0, minX: 180, maxX: 360 });
-  L.platforms.push({ x: 420 + Math.floor(rnd() * 160), y: GROUND_Y - 190 - Math.floor(rnd() * 40), w: 90 + Math.floor(rnd() * 40), h: 12, vy: rnd() < 0.5 ? 70 : -70, minY: GROUND_Y - 250, maxY: GROUND_Y - 130 });
+  L.platforms.push({ x: 220 + Math.floor(rnd() * 160), y: GROUND_Y - 110 - Math.floor(rnd() * 40), w: 90 + Math.floor(rnd() * 40), h: 12, vx: rnd() < 0.5 ? 70 * f : -70 * f, vy: 0, minX: 180, maxX: 360 });
+  L.platforms.push({ x: 420 + Math.floor(rnd() * 160), y: GROUND_Y - 190 - Math.floor(rnd() * 40), w: 90 + Math.floor(rnd() * 40), h: 12, vy: rnd() < 0.5 ? 70 * f : -70 * f, minY: GROUND_Y - 250, maxY: GROUND_Y - 130 });
 
   const hidden = rnd() < 0.5;
   L.coins.push({ x: hidden ? 220 + Math.floor(rnd() * 160) : 440 + Math.floor(rnd() * 180), y: hidden ? GROUND_Y - 130 : GROUND_Y - 210, r: 10, collected: false });
 
-  pushEnemySafe(L, { type: "patrol", x: 300 + Math.floor(rnd() * 160), y: GROUND_Y - 28, w: 24, h: 28, dir: 1, minX: 260, maxX: 360, speed: 70 });
+  pushEnemySafe(L, { type: "patrol", x: 300 + Math.floor(rnd() * 160), y: GROUND_Y - 28, w: 24, h: 28, dir: 1, minX: 260, maxX: 360, speed: 70 * f });
 
-  // Vines as pendulums
-  L.pendulums.push({ x: 520, y: GROUND_Y - 160, r: 22, angle: 0, speed: 1.9 });
-
-  // Collapsing logs (fall platforms)
-  L.fallPlatforms.push({ x: 580, y: GROUND_Y - 120, w: 80, h: 12, timer: 0, fall: false });
+  L.pendulums.push({ x: 520, y: GROUND_Y - 160, r: 22, angle: 0, speed: 1.9 * f });
+  L.fallPlatforms.push({ x: 580, y: GROUND_Y - 120, w: 80, h: 12, timer: 0, fall: false, threshold: Math.max(0.7, 1.6 / f) });
 
   return L;
 }
 
 function genSpace(i, rnd){
   const L = makeLevelBase(`Level ${i} - Space`);
-  L.bg = "#0a0f1d"; L.lowGravity = true;
+  const f = difficultyFactor(i);
+  L.bg = "#0a0f1d";
+  L.lowGravity = true;
 
   L.platforms.push({ x: 260 + Math.floor(rnd() * 160), y: GROUND_Y - 160 - Math.floor(rnd() * 60), w: 90 + Math.floor(rnd() * 60), h: 12 });
   L.platforms.push({ x: 420 + Math.floor(rnd() * 160), y: GROUND_Y - 230 - Math.floor(rnd() * 60), w: 90 + Math.floor(rnd() * 60), h: 12 });
 
-  pushHazardSafe(L, { x: 320 + Math.floor(rnd() * 180), y: GROUND_Y - 16, w: 70 + Math.floor(rnd() * 80), h: 16 });
+  pushHazardSafe(L, { x: 320 + Math.floor(rnd() * 180), y: GROUND_Y - 16, w: Math.floor((70 + rnd() * 80) * f), h: 16 });
 
-  pushEnemySafe(L, { type: "fly", x: 480 + Math.floor(rnd() * 100), y: GROUND_Y - 160 - Math.floor(rnd() * 60), w: 22, h: 22, t: rnd() * 6, ampX: 60, ampY: 40, baseX: 480, baseY: GROUND_Y - 160, speed: 1.2 + rnd() * 0.8 });
+  pushEnemySafe(L, { type: "fly", x: 480 + Math.floor(rnd() * 100), y: GROUND_Y - 160 - Math.floor(rnd() * 60), w: 22, h: 22, t: rnd() * 6, ampX: Math.floor(60 * f), ampY: Math.floor(40 * f), baseX: 480, baseY: GROUND_Y - 160, speed: 1.2 + rnd() * 0.8 * f });
 
   L.coins.push({ x: 420 + Math.floor(rnd() * 160), y: GROUND_Y - 250 - Math.floor(rnd() * 40), r: 10, collected: false });
 
-  // Teleport pad combo
   L.teleportPads.push({ x: 340, y: GROUND_Y - 140, w: 22, h: 22, toX: 620, toY: GROUND_Y - 260 });
-
-  // Moving saw in orbit-like path (horizontal patrol)
-  L.saws.push({ x: 380, y: GROUND_Y - 90, r: 16, dir: 1, minX: 340, maxX: 640, speed: 130 });
+  L.saws.push({ x: 380, y: GROUND_Y - 90, r: 16, dir: 1, minX: 340, maxX: 640, speed: 130 * f });
 
   return L;
 }
 
 function genBoss(i, rnd){
   const world = Math.floor((i - 1) / 10) + 1;
+  const f = difficultyFactor(i);
   const L = makeLevelBase(`Level ${i} - Boss`);
   L.bg = "#2a1f1f";
   L.boss = true;
   L.goal = null;
 
-  const hp = 6 + Math.floor(world / 2);
-  pushEnemySafe(L, { type: "boss", x: 520, y: GROUND_Y - 80, w: 100, h: 100, hp, fire: 0, rate: Math.max(0.55, 1.0 - 0.05 * world) });
+  const hp = Math.floor(6 * (1 + world * 0.15) * f);
+  const rate = Math.max(0.4, (0.9 - 0.05 * world) / (0.7 + f * 0.4));
+  pushEnemySafe(L, { type: "boss", x: 520, y: GROUND_Y - 80, w: 100, h: 100, hp, fire: 0, rate });
 
-  // Add one flavor obstacle per world
+  // Flavor per world
   if (world === 1) L.platforms.push({ x: 360, y: GROUND_Y - 120, w: 110, h: 12 });
-  if (world === 2) { L.dark = true; L.flashlight = true; L.breakables.push({ x: 420, y: GROUND_Y - 132, w: 60, h: 12, broken: false }); }
-  if (world === 3) L.bouncePads.push({ x: 280, y: GROUND_Y - 16, w: 50, h: 16, power: 980 });
-  if (world === 4) pushHazardSafe(L, { x: 340, y: GROUND_Y - 16, w: 110, h: 16 });
-  if (world === 5) { L.friction = 0.55; L.pendulums.push({ x: 440, y: GROUND_Y - 160, r: 20, angle: 0, speed: 2.0 }); }
-  if (world === 6) L.conveyorZones.push({ x: 260, y: GROUND_Y - 12, w: 180, h: 12, speed: 160 });
-  if (world === 7) { L.dark = true; L.flashlight = true; L.timedDoors.push({ x: 580, y: GROUND_Y - 90, w: 30, h: 90, t: 0, period: 3.0, open: true }); }
-  if (world === 8) L.fallPlatforms.push({ x: 380, y: GROUND_Y - 160, w: 100, h: 12, timer: 0, fall: false });
-  if (world >= 9) { L.lowGravity = true; L.saws.push({ x: 360, y: GROUND_Y - 60, r: 16, dir: 1, minX: 340, maxX: 620, speed: 140 }); }
+  else if (world === 2) { L.dark = true; L.flashlight = true; L.breakables.push({ x: 420, y: GROUND_Y - 132, w: 60, h: 12, broken: false }); }
+  else if (world === 3) L.bouncePads.push({ x: 280, y: GROUND_Y - 16, w: 50, h: 16, power: 980 });
+  else if (world === 4) pushHazardSafe(L, { x: 340, y: GROUND_Y - 16, w: Math.floor(110 * f), h: 16 });
+  else if (world === 5) { L.friction = 0.55; L.pendulums.push({ x: 440, y: GROUND_Y - 160, r: 20, angle: 0, speed: 2.0 * f }); }
+  else if (world === 6) L.conveyorZones.push({ x: 260, y: GROUND_Y - 12, w: 180, h: 12, speed: 160 * f });
+  else if (world === 7) { L.dark = true; L.flashlight = true; L.timedDoors.push({ x: 580, y: GROUND_Y - 90, w: 30, h: 90, t: 0, period: Math.max(1.2, 3.0 / (0.7 + f * 0.4)), open: true }); }
+  else if (world === 8) L.fallPlatforms.push({ x: 380, y: GROUND_Y - 160, w: 100, h: 12, timer: 0, fall: false, threshold: Math.max(0.6, 1.4 / f) });
+  else { L.lowGravity = true; L.saws.push({ x: 360, y: GROUND_Y - 60, r: 16, dir: 1, minX: 340, maxX: 620, speed: 140 * f }); }
 
   return L;
 }
@@ -458,10 +465,10 @@ function generateLevel(i){
   if (i <= 60) return genFactory(i, rnd);
   if (i <= 70) return genHaunted(i, rnd);
   if (i <= 80) return genJungle(i, rnd);
-  return genSpace(i, rnd);
+  return genSpace(i, rnd); // 81-99
 }
 
-/* ===== Load and death handling ===== */
+/* ===== Load/reset and death handling ===== */
 function loadLevel(idx){
   levelIndex = ((idx - 1) % 100) + 1;
   level = generateLevel(levelIndex);
@@ -483,7 +490,7 @@ function killPlayer(){
 loadLevel(1);
 document.getElementById("skipBtn").onclick = () => loadLevel(levelIndex + 1);
 
-/* ===== Update ===== */
+/* ===== Update loop ===== */
 function update(dt){
   const L = level;
   const gravity = L.lowGravity ? 520 : 1000;
@@ -492,8 +499,8 @@ function update(dt){
 
   const left = keys["ArrowLeft"] || keys["KeyA"] || moveVec.x < -0.2;
   const right = keys["ArrowRight"] || keys["KeyD"] || moveVec.x > 0.2;
-  if (left && !right){ player.vx = -baseSpeed * friction; player.face = -1; }
-  else if (right && !left){ player.vx = baseSpeed * friction; player.face = 1; }
+  if (left && !right) { player.vx = -baseSpeed * friction; player.face = -1; }
+  else if (right && !left) { player.vx = baseSpeed * friction; player.face = 1; }
   else { player.vx *= 0.85 * friction; }
 
   if (keys["Space"] || keys["ArrowUp"] || keys["KeyW"]) tryJump();
@@ -515,7 +522,7 @@ function update(dt){
   player.y += player.vy * dt;
 
   // Ground
-  if (player.y + player.h > GROUND_Y){
+  if (player.y + player.h > GROUND_Y) {
     player.y = GROUND_Y - player.h;
     player.vy = 0;
     player.onGround = true;
@@ -526,10 +533,16 @@ function update(dt){
 
   // Moving platforms and landing
   for (const p of L.platforms){
-    if (p.vx){ p.x += p.vx * dt; if (p.minX !== undefined && (p.x < p.minX || p.x > p.maxX)) p.vx *= -1; }
-    if (p.vy){ p.y += p.vy * dt; if (p.minY !== undefined && (p.y < p.minY || p.y > p.maxY)) p.vy *= -1; }
+    if (p.vx) {
+      p.x += p.vx * dt;
+      if (p.minX !== undefined && (p.x < p.minX || p.x > p.maxX)) p.vx *= -1;
+    }
+    if (p.vy) {
+      p.y += p.vy * dt;
+      if (p.minY !== undefined && (p.y < p.minY || p.y > p.maxY)) p.vy *= -1;
+    }
 
-    if (onTopOf(player.x, player.y, player.w, player.h, p.x, p.y, p.w, p.h)){
+    if (onTopOf(player.x, player.y, player.w, player.h, p.x, p.y, p.w, p.h)) {
       player.y = p.y - player.h;
       player.vy = 0;
       player.onGround = true;
@@ -539,20 +552,21 @@ function update(dt){
 
   // Falling platforms
   for (const fp of L.fallPlatforms){
+    const threshold = fp.threshold ?? 1.8;
     if (!fp.fall && onTopOf(player.x, player.y, player.w, player.h, fp.x, fp.y, fp.w, fp.h)){
       fp.timer += dt;
       player.y = fp.y - player.h;
       player.vy = 0;
       player.onGround = true;
       player.jumps = 0;
-      if (fp.timer >= 1.8) fp.fall = true;
+      if (fp.timer >= threshold) fp.fall = true;
     }
     if (fp.fall) fp.y += 380 * dt;
   }
 
   // Bounce pads
   for (const b of L.bouncePads){
-    if (onTopOf(player.x, player.y, player.w, player.h, b.x, b.y, b.w, b.h)){
+    if (onTopOf(player.x, player.y, player.w, player.h, b.x, b.y, b.w, b.h)) {
       player.vy = -b.power;
       player.onGround = false;
     }
@@ -570,7 +584,6 @@ function update(dt){
     td.t += dt;
     const phase = (td.t % td.period);
     td.open = phase < td.period / 2;
-    // Collision if closed
     if (!td.open && aabb(player.x, player.y, player.w, player.h, td.x, td.y, td.w, td.h)){
       if (player.x + player.w / 2 < td.x + td.w / 2) player.x = td.x - player.w;
       else player.x = td.x + td.w;
@@ -586,8 +599,8 @@ function update(dt){
   // Saws
   for (const s of L.saws){
     s.x += s.dir * s.speed * dt;
-    if (s.x < s.minX){ s.x = s.minX; s.dir = 1; }
-    if (s.x > s.maxX){ s.x = s.maxX; s.dir = -1; }
+    if (s.x < s.minX) { s.x = s.minX; s.dir = 1; }
+    if (s.x > s.maxX) { s.x = s.maxX; s.dir = -1; }
   }
 
   // Door/key
@@ -605,31 +618,31 @@ function update(dt){
   }
 
   // Invulnerability countdown
-  if (invulnerable){
+  if (invulnerable) {
     invulnTimer -= dt;
     if (invulnTimer <= 0) invulnerable = false;
   }
 
-  // Hazard collisions (skip if invulnerable)
-  if (!invulnerable){
+  // Hazards and obstacle collisions (skip if invulnerable)
+  if (!invulnerable) {
     for (const h of L.hazards){
-      if (aabb(player.x, player.y, player.w, player.h, h.x, h.y, h.w, h.h)){ killPlayer(); return; }
+      if (aabb(player.x, player.y, player.w, player.h, h.x, h.y, h.w, h.h)) { killPlayer(); return; }
     }
-    // Pendulum collision: treat bob as circle
+    // Pendulum bob collisions
     for (const pend of L.pendulums){
       const bobX = pend.x + Math.sin(pend.angle) * 60;
       const bobY = pend.y + Math.cos(pend.angle) * 60;
       const px = Math.max(player.x, Math.min(bobX, player.x + player.w));
       const py = Math.max(player.y, Math.min(bobY, player.y + player.h));
       const dx = bobX - px, dy = bobY - py;
-      if (dx*dx + dy*dy < pend.r * pend.r){ killPlayer(); return; }
+      if (dx * dx + dy * dy < pend.r * pend.r) { killPlayer(); return; }
     }
-    // Saw collision: circle vs rect
+    // Saw collisions
     for (const s of L.saws){
       const px = Math.max(player.x, Math.min(s.x, player.x + player.w));
       const py = Math.max(player.y, Math.min(s.y, player.y + player.h));
       const dx = s.x - px, dy = s.y - py;
-      if (dx*dx + dy*dy < s.r * s.r){ killPlayer(); return; }
+      if (dx * dx + dy * dy < s.r * s.r) { killPlayer(); return; }
     }
   }
 
@@ -682,18 +695,18 @@ function update(dt){
     // Collisions with player (skip if invulnerable)
     if (!invulnerable){
       if (e.type === "ghost"){
-        if (e.visible && aabb(player.x, player.y, player.w, player.h, e.x, e.y, e.w, e.h)){ killPlayer(); return; }
+        if (e.visible && aabb(player.x, player.y, player.w, player.h, e.x, e.y, e.w, e.h)) { killPlayer(); return; }
       } else if (e.type === "boss"){
         const stomping = player.vy > 0 && player.y + player.h <= e.y + 12 && aabb(player.x, player.y, player.w, player.h, e.x, e.y, e.w, e.h);
-        if (stomping){
+        if (stomping) {
           player.vy = -540;
           e.hp--;
-          if (e.hp <= 0){ coinTotal += L.bossReward; loadLevel(levelIndex + 1); return; }
-        } else if (aabb(player.x, player.y, player.w, player.h, e.x, e.y, e.w, e.h)){
+          if (e.hp <= 0) { coinTotal += L.bossReward; loadLevel(levelIndex + 1); return; }
+        } else if (aabb(player.x, player.y, player.w, player.h, e.x, e.y, e.w, e.h)) {
           killPlayer(); return;
         }
       } else {
-        if (aabb(player.x, player.y, player.w, player.h, e.x, e.y, e.w, e.h)){ killPlayer(); return; }
+        if (aabb(player.x, player.y, player.w, player.h, e.x, e.y, e.w, e.h)) { killPlayer(); return; }
       }
     }
   }
@@ -702,7 +715,7 @@ function update(dt){
   for (let i = bullets.length - 1; i >= 0; i--){
     const b = bullets[i];
     b.x += b.vx * dt; b.y += b.vy * dt; b.ttl -= dt;
-    if (!invulnerable && aabb(player.x, player.y, player.w, player.h, b.x, b.y, b.w, b.h)){ killPlayer(); return; }
+    if (!invulnerable && aabb(player.x, player.y, player.w, player.h, b.x, b.y, b.w, b.h)) { killPlayer(); return; }
     if (b.ttl <= 0) bullets.splice(i, 1);
   }
 
@@ -719,7 +732,7 @@ function update(dt){
   }
 }
 
-/* ===== Draw ===== */
+/* ===== Draw loop ===== */
 function draw(){
   const L = level;
   ctx.clearRect(0,0,canvas.width,canvas.height);
@@ -734,11 +747,17 @@ function draw(){
 
   // Hazards
   ctx.fillStyle = "#d84315";
-  for (const h of L.hazards) ctx.fillRect(h.x, h.y, h.w, h.h);
+  for (const h of L.hazards) ctx.fillRect(h.x,h.y,h.w,h.h);
+
+  // Breakables
+  for (const br of L.breakables){
+    ctx.fillStyle = br.broken ? "rgba(120,90,60,0.25)" : "#8d6e63";
+    ctx.fillRect(br.x, br.y, br.w, br.h);
+  }
 
   // Platforms
   ctx.fillStyle = "#90a4ae";
-  for (const p of L.platforms) ctx.fillRect(p.x, p.y, p.w, p.h);
+  for (const p of L.platforms) ctx.fillRect(p.x,p.y,p.w,p.h);
 
   // Falling platforms
   ctx.fillStyle = "#7da453";
@@ -748,17 +767,11 @@ function draw(){
   ctx.fillStyle = "#7cb342";
   for (const b of L.bouncePads) ctx.fillRect(b.x, b.y, b.w, b.h);
 
-  // Breakables
-  for (const br of L.breakables){
-    ctx.fillStyle = br.broken ? "rgba(120,90,60,0.25)" : "#8d6e63";
-    ctx.fillRect(br.x, br.y, br.w, br.h);
-  }
-
   // Conveyor zones
   ctx.fillStyle = "rgba(200,200,255,0.22)";
   for (const z of L.conveyorZones) ctx.fillRect(z.x, z.y, z.w, z.h);
 
-  // Timed doors (closed render)
+  // Timed doors
   for (const td of L.timedDoors){
     ctx.fillStyle = td.open ? "rgba(30,150,30,0.4)" : "#6d4c41";
     ctx.fillRect(td.x, td.y, td.w, td.h);
@@ -813,10 +826,12 @@ function draw(){
     if (e.type === "ghost") color = e.visible ? "#9c27b0" : "rgba(156,39,176,0.3)";
     if (e.type === "turret") color = "#b0bec5";
     if (e.type === "boss") color = "#e53935";
-    ctx.fillStyle = color; ctx.fillRect(e.x, e.y, e.w, e.h);
+    ctx.fillStyle = color;
+    ctx.fillRect(e.x, e.y, e.w, e.h);
 
     if (e.type === "boss"){
-      ctx.fillStyle = "#222"; ctx.fillRect(e.x, e.y - 10, e.w, 6);
+      ctx.fillStyle = "#222";
+      ctx.fillRect(e.x, e.y - 10, e.w, 6);
       const maxHp = Math.max(e.hp, 12);
       ctx.fillStyle = "#76ff03";
       ctx.fillRect(e.x, e.y - 10, (Math.max(0, e.hp) / maxHp) * e.w, 6);
@@ -824,7 +839,10 @@ function draw(){
   }
 
   // Bullets
-  for (const b of bullets){ ctx.fillStyle = b.color || "#fff"; ctx.fillRect(b.x, b.y, b.w, b.h); }
+  for (const b of bullets){
+    ctx.fillStyle = b.color || "#fff";
+    ctx.fillRect(b.x, b.y, b.w, b.h);
+  }
 
   // Player
   ctx.fillStyle = player.color;
@@ -864,7 +882,7 @@ function draw(){
   }
 }
 
-/* ===== Loop ===== */
+/* ===== Game loop ===== */
 let last = performance.now();
 function loop(now){
   const dt = Math.min(0.033, (now - last) / 1000);
