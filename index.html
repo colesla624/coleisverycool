@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <title>Platformer with Coins & Shop</title>
+  <title>Platformer with Coins & Shop Toggle</title>
   <style>
     body { margin:0; background:#111; }
     canvas { display:block; }
@@ -26,10 +26,16 @@
       color:#fff; font-family:sans-serif; font-size:20px;
     }
     .shop {
-      position:fixed; top:40px; right:20px; background:#222; color:#fff;
+      position:fixed; top:60px; right:20px; background:#222; color:#fff;
       padding:10px; border-radius:8px; font-family:sans-serif;
+      display:none; /* hidden by default */
     }
     .shop button { margin:4px; padding:6px; }
+    #shopToggle {
+      position:fixed; top:60px; left:20px;
+      background:#fff; border:none; padding:8px 12px;
+      border-radius:6px; font-weight:bold;
+    }
   </style>
 </head>
 <body>
@@ -39,6 +45,11 @@
   <div id="moveStick" class="stick-area"><div id="moveKnob" class="stick-knob"></div></div>
   <div id="jumpBtn" class="btn">Jump</div>
 </div>
+
+<!-- Shop toggle button -->
+<button id="shopToggle">Shop</button>
+
+<!-- Shop panel -->
 <div class="shop" id="shop">
   <div>Coins: <span id="coinCount">0</span></div>
   <div>Shop:</div>
@@ -56,29 +67,32 @@ const TILE=32;
 let coinTotal=0;
 let playerColor="#ffd166";
 
-// Generate many levels
-const levels=[];
-for(let i=1;i<=24;i++){
-  const tiles=Array.from({length:16},(_,y)=>{
-    const row=Array(32).fill(0);
-    if(y===15){row.fill(1);row[30]=4;} // ground + goal
-    if(i%2===0 && y===13){row[8]=1;row[12]=1;row[16]=1;row[20]=1;}
-    if(i%3===0 && y===14){row[5]=2;row[6]=2;} // hazards
-    return row;
-  });
-  const coins=[
-    {x:200,y:400,collected:false},
-    {x:400,y:300,collected:false},
-    {x:600,y:350,collected:false}
-  ];
-  levels.push({
-    name:"Level "+i,
+// Simple levels
+const levels=[
+  {
+    name:"Level 1",
     width:32,height:16,
-    tiles:tiles,
+    tiles:Array.from({length:16},(_,y)=>{
+      const row=Array(32).fill(0);
+      if(y===15){row.fill(1);row[30]=4;}
+      return row;
+    }),
     start:{x:TILE*2,y:(15*TILE)-28},
-    coins:coins
-  });
-}
+    coins:[{x:200,y:400,collected:false},{x:400,y:300,collected:false}]
+  },
+  {
+    name:"Level 2",
+    width:32,height:16,
+    tiles:Array.from({length:16},(_,y)=>{
+      const row=Array(32).fill(0);
+      if(y===15){row.fill(1);row[28]=4;}
+      if(y===13){row[10]=1;row[14]=1;row[18]=1;}
+      return row;
+    }),
+    start:{x:TILE*2,y:(15*TILE)-28},
+    coins:[{x:300,y:350,collected:false},{x:500,y:350,collected:false}]
+  }
+];
 let levelIndex=0;
 
 const player={x:0,y:0,w:24,h:28,vx:0,vy:0,onGround:false};
@@ -126,7 +140,6 @@ document.getElementById('jumpBtn').addEventListener('touchstart',()=>{
 });
 
 function update(dt){
-  // input
   const left=keys["ArrowLeft"]||moveVec.x<-0.2;
   const right=keys["ArrowRight"]||moveVec.x>0.2;
   if(left&&!right) player.vx=-200;
@@ -134,19 +147,16 @@ function update(dt){
   else player.vx=0;
   if(keys["Space"]&&player.onGround){player.vy=-500;player.onGround=false;}
 
-  // physics
   player.vy+=1000*dt;
   player.x+=player.vx*dt;
   player.y+=player.vy*dt;
 
-  // collision
   const t=tileAt(player.x+player.w/2,player.y+player.h);
   if(t===1||t===4){
     player.y=Math.floor((player.y+player.h)/TILE)*TILE-player.h;
     player.vy=0;player.onGround=true;
-    if(t===4){loadLevel(levelIndex+1);} // advance silently
+    if(t===4){loadLevel(levelIndex+1);}
   }
-  if(t===2){loadLevel(levelIndex);} // hazard resets
 
   // coin collection
   for(const c of levels[levelIndex].coins){
@@ -167,12 +177,10 @@ function draw(){
     for(let x=0;x<L.width;x++){
       const t=L.tiles[y][x];if(!t)continue;
       const px=x*TILE,py=y*TILE;
-      if(t===1){ctx.fillStyle="#555";ctx.fillRect(px,py,TILE,TILE);} // ground
-      if(t===2){ctx.fillStyle=(Math.floor(Date.now()/200)%2?"#b71c1c":"#ff7043");ctx.fillRect(px,py,TILE,TILE);} // hazard
-      if(t===4){ctx.fillStyle="#1e88e5";ctx.fillRect(px,py,TILE,TILE);} // goal
+      if(t===1){ctx.fillStyle="#555";ctx.fillRect(px,py,TILE,TILE);}
+      if(t===4){ctx.fillStyle="#1e88e5";ctx.fillRect(px,py,TILE,TILE);}
     }
   }
-  // coins
   for(const c of L.coins){
     if(!c.collected){
       ctx.fillStyle="#ffd700";
@@ -181,7 +189,6 @@ function draw(){
       ctx.fill();
     }
   }
-  // player
   ctx.fillStyle=playerColor;
   ctx.fillRect(player.x,player.y,player.w,player.h);
 }
@@ -195,9 +202,10 @@ function loop(now){
 }
 requestAnimationFrame(loop);
 
-// Shop
+// Shop logic
 function buyColor(color){
   if(color==="#ffd166"){playerColor=color;return;}
   if(coinTotal>=10){
     coinTotal-=10;
     document.getElementById("coinCount").textContent=coinTotal;
+    playerColor=color;
