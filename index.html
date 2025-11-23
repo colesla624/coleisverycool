@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <title>100-Level Diverse Platformer</title>
+  <title>Boss Platformer</title>
   <style>
     body { margin:0; background:#111; }
     canvas { display:block; }
@@ -11,7 +11,6 @@
     .stick-area {
       position:fixed; bottom:16px; left:16px; width:120px; height:120px;
       border-radius:50%; background:rgba(255,255,255,0.08);
-      border:1px solid rgba(255,255,255,0.12);
     }
     .stick-knob {
       position:absolute; left:50%; top:50%; width:40px; height:40px;
@@ -20,12 +19,17 @@
     .btn {
       position:fixed; right:16px; bottom:16px; width:80px; height:80px;
       border-radius:50%; background:#fff; display:flex; align-items:center; justify-content:center;
-      font-weight:bold; user-select:none;
+      font-weight:bold;
     }
     .label {
       position:fixed; top:8px; left:50%; transform:translateX(-50%);
       color:#fff; font-family:sans-serif; font-size:18px; background:rgba(0,0,0,0.4);
       padding:6px 10px; border-radius:8px;
+    }
+    #skipBtn {
+      position:fixed; top:60px; right:20px;
+      background:#fff; border:none; padding:8px 12px; border-radius:6px;
+      font-weight:bold; display:none;
     }
   </style>
 </head>
@@ -36,54 +40,43 @@
   <div id="moveStick" class="stick-area"><div id="moveKnob" class="stick-knob"></div></div>
   <div id="jumpBtn" class="btn">Jump</div>
 </div>
+<button id="skipBtn">Skip Boss</button>
 
 <script>
 const canvas=document.getElementById("game"),ctx=canvas.getContext("2d");
 canvas.width=window.innerWidth;canvas.height=window.innerHeight;
 
 const TILE=32,W=32,H=16;
-let coinTotal=0,playerColor="#ffd166",hasKey=false;
-
-// Player with double jump
+let coinTotal=0,playerColor="#ffd166";
 const player={x:0,y:0,w:24,h:28,vx:0,vy:0,onGround:false,jumps:0};
 
-// Helpers
-const makeRow=(f=0)=>Array(W).fill(f);
-function place(tiles,y,x1,x2,type){for(let x=x1;x<=x2;x++)tiles[y][x]=type;}
-function baseLevel(goalX){const t=Array.from({length:H},()=>makeRow(0));place(t,15,0,31,1);t[15][goalX]=4;return t;}
-
-// Level list
 const levels=[];
 
-// Seed a few handcrafted levels
-levels.push({name:"Level 1 - Intro",tiles:baseLevel(30),start:{x:TILE*2,y:(15*TILE)-28},coins:[{x:220,y:440,collected:false}],items:[],platforms:[],enemies:[],dark:false});
-levels.push({name:"Level 2 - Platforms",tiles:(()=>{const t=baseLevel(28);place(t,13,10,10,1);place(t,13,14,14,1);place(t,13,18,18,1);return t;})(),start:{x:TILE*2,y:(15*TILE)-28},coins:[{x:320,y:360,collected:false},{x:520,y:360,collected:false}],items:[],platforms:[],enemies:[{type:"patrol",x:360,y:450,w:24,h:28,dir:1,minX:320,maxX:560,speed:60}],dark:false});
-
-// Procedural generation for levels 3..100
-for(let i=3;i<=100;i++){
-  const name="Level "+i;
-  const tiles=baseLevel((i%2===0)?26:29);
-  if(i%3===0)place(tiles,14,6,10,2); // hazards
-  if(i%5===0)tiles[14][20]=5;        // bounce pad
-  if(i%4===0){for(let x=22;x<=25;x++)tiles[13][x]=6;} // breakables
-  if(i%7===0){tiles[15][29]=1;tiles[6][28]=4;place(tiles,8,20,21,1);} // vertical goal
-  const coins=[{x:(8+(i%20))*TILE,y:360,collected:false},{x:(14+(i%12))*TILE,y:320,collected:false}];
-  const items=(i%6===0)?[{type:"key",x:(12+(i%8))*TILE,y:12*TILE,collected:false}]:[];
-  const platforms=(i%2===1)?[{x:16*TILE,y:11*TILE,w:TILE,h:TILE,vx:0,vy:-40,minY:9*TILE,maxY:12*TILE}]:[];
-  const enemies=[{type:"patrol",x:320,y:450,w:24,h:28,dir:1,minX:280,maxX:620,speed:60+2*i}];
-  if(i%3===1)enemies.push({type:"fly",x:480,y:360,w:22,h:22,t:0,ampX:40,ampY:25,baseX:480,baseY:360,speed:2});
-  if(i%5===2)enemies.push({type:"chase",x:520,y:450,w:24,h:28,speed:85,range:240});
-  levels.push({name,tiles,start:{x:TILE*2,y:(15*TILE)-28},coins,items,platforms,enemies,dark:(i%8===0)});
+// Generate 100 levels
+for(let i=1;i<=100;i++){
+  const boss=(i%10===0);
+  const tiles=Array.from({length:H},(_,y)=>Array(W).fill(0));
+  tiles[15].fill(1);
+  tiles[15][30]=boss?0:4; // goal only if not boss
+  const coins=boss?[]:[{x:200,y:400,collected:false},{x:400,y:300,collected:false}];
+  const enemies=boss?[{type:"boss",x:400,y:400,w:60,h:60,hp:5}]:[{type:"patrol",x:300,y:450,w:24,h:28,dir:1,minX:280,maxX:600,speed:60}];
+  levels.push({name:"Level "+i+(boss?" (Boss)":""),
+               tiles,start:{x:TILE*2,y:(15*TILE)-28},
+               coins,enemies,boss});
 }
 
 let levelIndex=0;
 function loadLevel(i){
-  levelIndex=i%levels.length;hasKey=false;
+  levelIndex=i%levels.length;
   document.getElementById("levelLabel").textContent=levels[levelIndex].name+" | Coins: "+coinTotal;
   player.x=levels[levelIndex].start.x;player.y=levels[levelIndex].start.y;
   player.vx=player.vy=0;player.jumps=0;
+  document.getElementById("skipBtn").style.display=levels[levelIndex].boss?"block":"none";
 }
 loadLevel(0);
+
+// Skip button
+document.getElementById("skipBtn").onclick=()=>{loadLevel(levelIndex+1);};
 
 // Input
 const keys={};
@@ -110,10 +103,6 @@ let moveVec={x:0};
 function tryJump(){if(player.jumps<2){player.vy=-500;player.onGround=false;player.jumps++;}}
 document.getElementById('jumpBtn').addEventListener('touchstart',tryJump);
 
-// Tile sampling
-function tileAt(px,py){const L=levels[levelIndex];const tx=Math.floor(px/TILE),ty=Math.floor(py/TILE);if(tx<0||ty<0||tx>=W||ty>=H)return 0;return L.tiles[ty][tx];}
-function solidTile(t){return t===1||t===4||t===6||t===8||t===5;}
-
 function update(dt){
   const L=levels[levelIndex];
   const left=keys["ArrowLeft"]||moveVec.x<-0.2;
@@ -123,10 +112,55 @@ function update(dt){
 
   player.vy+=1000*dt;player.x+=player.vx*dt;player.y+=player.vy*dt;
 
-  // Platforms
-  for(const p of L.platforms){
-    if(p.vx){p.x+=p.vx*dt;if(p.x<p.minX||p.x>p.maxX)p.vx*=-1;}
-    if(p.vy){p.y+=p.vy*dt;if(p.y<p.minY||p.y>p.maxY)p.vy*=-1;}
+  // Ground collision
+  if(player.y+player.h>15*TILE){
+    player.y=15*TILE-player.h;player.vy=0;player.onGround=true;player.jumps=0;
   }
 
-  const footX=
+  // Coins
+  for(const c of L.coins){
+    if(!c.collected && player.x< c.x && player.x+player.w>c.x && player.y< c.y && player.y+player.h>c.y){
+      c.collected=true;coinTotal++;
+      document.getElementById("levelLabel").textContent=L.name+" | Coins: "+coinTotal;
+    }
+  }
+
+  // Enemies
+  for(const e of L.enemies){
+    if(e.type==="patrol"){
+      e.x+=e.dir*e.speed*dt;
+      if(e.x<e.minX||e.x>e.maxX)e.dir*=-1;
+    }
+    if(player.x<e.x+e.w && player.x+player.w>e.x && player.y<e.y+e.h && player.y+player.h>e.y){
+      if(e.type==="boss"){
+        e.hp--; // hit boss
+        if(e.hp<=0){coinTotal+=100;loadLevel(levelIndex+1);}
+      }else{loadLevel(levelIndex);} // reset
+    }
+  }
+
+  // Goal
+  if(!L.boss && player.x>30*TILE){loadLevel(levelIndex+1);}
+}
+
+function draw(){
+  const L=levels[levelIndex];
+  ctx.fillStyle="#222";ctx.fillRect(0,0,canvas.width,canvas.height);
+  // Ground
+  ctx.fillStyle="#555";ctx.fillRect(0,15*TILE,canvas.width,TILE);
+  // Coins
+  for(const c of L.coins){if(!c.collected){ctx.fillStyle="#ffd700";ctx.beginPath();ctx.arc(c.x,c.y,10,0,Math.PI*2);ctx.fill();}}
+  // Enemies
+  for(const e of L.enemies){
+    ctx.fillStyle=e.type==="boss"?"#f44336":"#ff4444";
+    ctx.fillRect(e.x,e.y,e.w,e.h);
+  }
+  // Player
+  ctx.fillStyle=playerColor;ctx.fillRect(player.x,player.y,player.w,player.h);
+}
+
+let last=performance.now();
+function loop(now){const dt=(now-last)/1000;last=now;update(dt);draw();requestAnimationFrame(loop);}
+requestAnimationFrame(loop);
+</script>
+</body
