@@ -21,11 +21,16 @@
       border-radius:50%; background:#fff; display:flex; align-items:center; justify-content:center;
       font-weight:bold;
     }
+    .label {
+      position:fixed; top:8px; left:50%; transform:translateX(-50%);
+      color:#fff; font-family:sans-serif; font-size:20px;
+    }
   </style>
 </head>
 <body>
 <canvas id="game"></canvas>
 <div class="hud">
+  <div class="label" id="levelLabel">Level 1</div>
   <div id="moveStick" class="stick-area"><div id="moveKnob" class="stick-knob"></div></div>
   <div id="jumpBtn" class="btn">Jump</div>
 </div>
@@ -51,8 +56,33 @@ const levels=[
     width:32,height:16,
     tiles:Array.from({length:16},(_,y)=>{
       const row=Array(32).fill(0);
-      if(y===15){row.fill(1);row[28]=4;} // ground + goal
-      if(y===13){row[10]=1;row[14]=1;row[18]=1;row[22]=1;} // stepping stones
+      if(y===15){row.fill(1);row[28]=4;}
+      if(y===13){row[10]=1;row[14]=1;row[18]=1;row[22]=1;}
+      return row;
+    }),
+    start:{x:TILE*2,y:(15*TILE)-28}
+  },
+  {
+    name:"Level 3",
+    width:32,height:16,
+    tiles:Array.from({length:16},(_,y)=>{
+      const row=Array(32).fill(0);
+      if(y===15){row.fill(1);row[25]=4;}
+      if(y===14){row[5]=2;row[6]=2;row[7]=2;} // hazards
+      if(y===13){row[12]=1;row[16]=1;row[20]=1;}
+      return row;
+    }),
+    start:{x:TILE*2,y:(15*TILE)-28}
+  },
+  {
+    name:"Level 4",
+    width:32,height:16,
+    tiles:Array.from({length:16},(_,y)=>{
+      const row=Array(32).fill(0);
+      if(y===15){row.fill(1);row[30]=4;}
+      if(y===12){row[8]=1;row[9]=1;row[10]=1;}
+      if(y===10){row[15]=1;row[16]=1;}
+      if(y===8){row[22]=1;}
       return row;
     }),
     start:{x:TILE*2,y:(15*TILE)-28}
@@ -63,6 +93,7 @@ let levelIndex=0;
 const player={x:0,y:0,w:24,h:28,vx:0,vy:0,onGround:false};
 function loadLevel(i){
   levelIndex=i%levels.length;
+  document.getElementById("levelLabel").textContent="Level "+(levelIndex+1);
   player.x=levels[levelIndex].start.x;
   player.y=levels[levelIndex].start.y;
   player.vx=player.vy=0;
@@ -122,7 +153,10 @@ function update(dt){
   if(t===1||t===4){
     player.y=Math.floor((player.y+player.h)/TILE)*TILE-player.h;
     player.vy=0;player.onGround=true;
-    if(t===4){loadLevel(levelIndex+1);} // silently advance
+    if(t===4){loadLevel(levelIndex+1);} // advance silently
+  }
+  if(t===2){ // hazard
+    loadLevel(levelIndex); // respawn
   }
 }
 
@@ -133,8 +167,9 @@ function draw(){
     for(let x=0;x<L.width;x++){
       const t=L.tiles[y][x];if(!t)continue;
       const px=x*TILE,py=y*TILE;
-      if(t===1){ctx.fillStyle="#555";ctx.fillRect(px,py,TILE,TILE);}
-      if(t===4){ctx.fillStyle="#1e88e5";ctx.fillRect(px,py,TILE,TILE);}
+      if(t===1){ctx.fillStyle="#555";ctx.fillRect(px,py,TILE,TILE);} // ground
+      if(t===2){ctx.fillStyle=(Math.floor(Date.now()/200)%2?"#b71c1c":"#ff7043");ctx.fillRect(px,py,TILE,TILE);} // hazard
+      if(t===4){ctx.fillStyle="#1e88e5";ctx.fillRect(px,py,TILE,TILE);} // goal
     }
   }
   ctx.fillStyle="#ffd166";ctx.fillRect(player.x,player.y,player.w,player.h);
