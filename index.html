@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <title>100-Level Diverse Boss Platformer</title>
+  <title>Diverse 100-Level Platformer</title>
   <style>
     body { margin:0; background:#111; }
     canvas { display:block; }
@@ -52,37 +52,33 @@ const player={x:0,y:0,w:24,h:28,vx:0,vy:0,onGround:false,jumps:0};
 
 const levels=[];
 
-// Themes
-function grasslands(i){return {theme:"Grasslands",hazards:[{x:5,y:14}],coins:[{x:200,y:400}],enemies:[{type:"patrol",x:300,y:450,w:24,h:28,dir:1,minX:280,maxX:600,speed:60}]};}
-function caves(i){return {theme:"Caves",dark:true,hazards:[{x:10,y:14}],coins:[{x:400,y:300}],enemies:[{type:"fly",x:480,y:360,w:22,h:22,t:0,ampX:40,ampY:25,baseX:480,baseY:360,speed:2}]};}
-function sky(i){return {theme:"Sky",platforms:[{x:16*TILE,y:11*TILE,w:TILE,h:TILE,vx:0,vy:-40,minY:9*TILE,maxY:12*TILE}],coins:[{x:600,y:220}],enemies:[]};}
-function lava(i){return {theme:"Lava",hazards:[{x:6,y:14},{x:7,y:14},{x:8,y:14}],coins:[{x:260,y:340}],enemies:[{type:"chase",x:520,y:450,w:24,h:28,speed:85,range:240}]};}
-function ice(i){return {theme:"Ice",slippery:true,coins:[{x:300,y:350}],enemies:[{type:"patrol",x:400,y:450,w:24,h:28,dir:1,minX:380,maxX:600,speed:70}]};}
-function factory(i){return {theme:"Factory",conveyor:true,coins:[{x:420,y:320}],enemies:[{type:"turret",x:500,y:400,w:20,h:20,fire:0}]};}
-function haunted(i){return {theme:"Haunted",coins:[{x:380,y:350}],enemies:[{type:"ghost",x:440,y:450,w:24,h:28,t:0}]};}
-function jungle(i){return {theme:"Jungle",coins:[{x:320,y:300}],platforms:[{x:200,y:10*TILE,w:TILE,h:TILE,vx:50,vy:0,minX:180,maxX:220}],enemies:[]};}
-function space(i){return {theme:"Space",lowGravity:true,coins:[{x:500,y:280}],enemies:[{type:"fly",x:480,y:360,w:22,h:22,t:0,ampX:60,ampY:40,baseX:480,baseY:360,speed:1}]};}
-
-// Boss generator
-function bossLevel(i){
-  return {boss:true,enemies:[{type:"boss",x:400,y:400,w:60,h:60,hp:5}]};
-}
+// Theme generators
+function grasslands(i){return {coins:[{x:200,y:400}],enemies:[{type:"patrol",x:300,y:450,w:24,h:28,dir:1,minX:280,maxX:600,speed:60}]};}
+function caves(i){return {dark:true,hazards:[{x:10,y:14}],coins:[{x:400,y:300}],enemies:[{type:"fly",x:480,y:360,w:22,h:22,t:0,ampX:40,ampY:25,baseX:480,baseY:360,speed:2}]};}
+function sky(i){return {platforms:[{x:16*TILE,y:11*TILE,w:TILE,h:TILE,vx:0,vy:-40,minY:9*TILE,maxY:12*TILE}],coins:[{x:600,y:220}]};}
+function lava(i){return {hazards:[{x:6,y:14},{x:7,y:14},{x:8,y:14}],coins:[{x:260,y:340}],enemies:[{type:"chase",x:520,y:450,w:24,h:28,speed:85,range:240}]};}
+function ice(i){return {slippery:true,coins:[{x:300,y:350}],enemies:[{type:"patrol",x:400,y:450,w:24,h:28,dir:1,minX:380,maxX:600,speed:70}]};}
+function factory(i){return {conveyor:true,coins:[{x:420,y:320}],enemies:[{type:"turret",x:500,y:400,w:20,h:20,fire:0}]};}
+function haunted(i){return {coins:[{x:380,y:350}],enemies:[{type:"ghost",x:440,y:450,w:24,h:28,t:0}]};}
+function jungle(i){return {coins:[{x:320,y:300}],platforms:[{x:200,y:10*TILE,w:TILE,h:TILE,vx:50,vy:0,minX:180,maxX:220}]};}
+function space(i){return {lowGravity:true,coins:[{x:500,y:280}],enemies:[{type:"fly",x:480,y:360,w:22,h:22,t:0,ampX:60,ampY:40,baseX:480,baseY:360,speed:1}]};}
+function bossLevel(i){return {boss:true,enemies:[{type:"boss",x:400,y:400,w:60,h:60,hp:5}]};}
 
 // Generate 100 levels
 for(let i=1;i<=100;i++){
   const boss=(i%10===0);
   let themeData;
-  if(boss){themeData=bossLevel(i);}
-  else if(i<=10)themeData=grasslands(i);
-  else if(i<=20)themeData=caves(i);
-  else if(i<=30)themeData=sky(i);
-  else if(i<=40)themeData=lava(i);
-  else if(i<=50)themeData=ice(i);
-  else if(i<=60)themeData=factory(i);
-  else if(i<=70)themeData=haunted(i);
-  else if(i<=80)themeData=jungle(i);
-  else if(i<=90)themeData=space(i);
-  else themeData={theme:"Boss Rush",boss:true,enemies:[{type:"boss",x:400,y:400,w:60,h:60,hp:10}]};
+  if(boss) themeData=bossLevel(i);
+  else if(i<=10) themeData=grasslands(i);
+  else if(i<=20) themeData=caves(i);
+  else if(i<=30) themeData=sky(i);
+  else if(i<=40) themeData=lava(i);
+  else if(i<=50) themeData=ice(i);
+  else if(i<=60) themeData=factory(i);
+  else if(i<=70) themeData=haunted(i);
+  else if(i<=80) themeData=jungle(i);
+  else if(i<=90) themeData=space(i);
+  else themeData={boss:true,enemies:[{type:"boss",x:400,y:400,w:60,h:60,hp:10}]};
 
   const tiles=Array.from({length:H},(_,y)=>Array(W).fill(0));
   tiles[15].fill(1);
@@ -133,4 +129,9 @@ let moveVec={x:0};
 
 // Double jump
 function tryJump(){if(player.jumps<2){player.vy=-500;player.onGround=false;player.jumps++;}}
-document.get
+document.getElementById('jumpBtn').addEventListener('touchstart',tryJump);
+
+function update(dt){
+  const L=levels[levelIndex];
+  const gravity=L.lowGravity?500:1000;
+  const left=keys["ArrowLeft"]||moveVec.x<-0.
